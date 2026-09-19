@@ -167,6 +167,47 @@ most five direct Luna children in one task. Before a delegation batch, the
 managed instructions call the daily selector; external rankings are only a
 selection aid and do not guarantee savings, speed, or task quality.
 
+### Delegation gate
+
+Before substantive work starts, Astra assesses the scope and expected payoff.
+A work package must be evaluated when work crosses modules or layers, spans
+multiple substantive files, contains multiple independent workflows, needs
+cross-component debugging, or needs independent exploration, external
+verification, implementation, testing, or review. If the package has an
+explicit goal, file or problem ownership, and checkable acceptance, and its
+expected value exceeds child startup, communication, and acceptance overhead,
+Astra dispatches a native child when the host permits it. An explicit user
+request to delegate is honored within those permissions; the root does not
+merely describe a split or add a child after the work is done.
+
+Direct completion is suitable for a simple single-point change, a repetitive
+mechanical rename, a root-only decision, an inseparable dependency chain, or an
+explicit no-delegation request. “Small” by itself does not waive a
+cross-module assessment. Independent packages may run in parallel; dependent
+packages run serially; a task uses no more than five direct Luna children.
+Parallel work also needs non-conflicting browser, database, port, and output
+resources. If an explicit worker count or parallel arrangement cannot be met
+safely, explain the constraint and ask to adjust it rather than silently changing
+the request. Architectural decisions stay with the root; useful independent
+fact-checking can still be delegated.
+
+| Situation | Route |
+| --- | --- |
+| Changes cross modules or layers and have separate ownership and acceptance | Delegate; run independent packages in parallel where useful |
+| Two independent workflows or a cross-component investigation can be isolated | Delegate; use serial order when one package depends on another |
+| One local typo, a mechanical rename, or a root-only decision without a useful independent check | Complete directly |
+| A tightly coupled fix has no safe independent boundary | Complete directly, or reassess after a boundary appears |
+| The user explicitly says not to delegate | Complete directly |
+
+Reassess unfinished work when the scope expands, the original plan no longer
+fits, troubleshooting repeats, or the task enters a new implementation or
+verification phase. The daily selector only chooses a supported role level; it
+does not decide whether to delegate or spawn agents, and it is not a timer or
+scheduler. If the selector, role, or native tool fails, report the actual
+returned error. Do not claim that a capability is unavailable without evidence,
+and do not treat successful selection as a child-agent invocation. These are
+instructions for the agent, not a host-enforced guarantee of delegation.
+
 The final reply includes a compact execution summary, for example:
 
 ```text
@@ -177,6 +218,9 @@ Astra/Luna: delegated · luna_max ×2 · parallel
 These examples show the format, not a live run. Child levels and counts come
 from actual dispatches; the root displays its known model name only. The
 summary does not read or report the current window's reasoning-effort setting.
+For substantive work, state the delegation or direct-completion reason in one
+sentence in the plan or progress update. Keep this compact footer and do not
+create a separate delegation report file.
 
 ## Installation scope and backups
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Define a delegation gate for substantive work: assess scope, explicit
+  ownership and acceptance, and expected payoff before work starts; honor an
+  explicit user request to delegate when the host permits it.
+- Clarify direct-completion cases, parallel versus serial packages, the five
+  child limit, re-evaluation triggers, and evidence-based selector, role, and
+  tool failure reporting.
+- Synchronize the English and Simplified Chinese usage guidance without adding
+  dependencies or third-party notice entries.
+
 ## Codex-assisted setup and implementation scope — 2026-09-20
 
 - Put copyable installation and post-installation verification prompts near

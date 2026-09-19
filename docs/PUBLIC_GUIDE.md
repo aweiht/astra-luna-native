@@ -95,6 +95,55 @@ or uses the conservative supported max role when the local capability directory
 allows it. The result reports the fallback reason and does not claim that a
 dynamic update succeeded.
 
+## Delegation gate
+
+The root agent owns the task decision and final acceptance. Before substantive
+work starts, it assesses scope and expected payoff. A work package must be
+evaluated when work crosses modules or layers, spans multiple substantive files,
+contains multiple independent workflows, needs cross-component debugging, or
+needs independent exploration, external verification, implementation, testing,
+or review. When a package has an explicit goal, file or problem ownership, and
+checkable acceptance, and its expected value exceeds child startup,
+communication, and acceptance overhead, the root dispatches a native child when
+the host permits it. An explicit user request to delegate is honored within
+those permissions. The root must make the call before doing the package; a
+verbal split or a child added after the work is complete is not delegation.
+
+Direct completion is appropriate for a simple single-point change, a repetitive
+mechanical rename, a root-only decision, an inseparable dependency chain, or an
+explicit no-delegation request. A change being small does not waive a
+cross-module assessment. Independent packages may run in parallel; dependent
+packages run serially; one task uses no more than five direct Luna children.
+Before parallel work, check shared browser, database, port, and output resources;
+use explicit read-only or isolated scopes, or serialize conflicting work. If an
+explicit worker count or parallel arrangement cannot be met safely, explain the
+constraint and ask to adjust it rather than silently changing the request.
+Architectural decisions stay with the root, while useful independent
+fact-checking can still be delegated. Distinguish argument or permission errors,
+temporary failures, and host limitations; one failed call does not establish
+that Luna is generally unavailable.
+
+| Example | Expected route |
+| --- | --- |
+| Changes cross modules or layers with separate ownership and acceptance | Delegate; parallelize only independent packages |
+| Separate workflows or cross-component debugging can be isolated | Delegate; keep dependency order when required |
+| One local typo, a mechanical rename, or a root-only decision without a useful independent check | Complete directly |
+| A tightly coupled fix has no safe independent boundary | Complete directly, then reassess if a boundary appears |
+| The user explicitly asks for no delegation | Complete directly |
+
+Reassess unfinished work when scope expands, the original plan stops fitting,
+troubleshooting repeats, or a new implementation or verification phase begins.
+The daily selector only chooses the supported role level. It does not decide
+whether the task deserves delegation, spawn agents, or act as a timer or
+scheduler. If the selector, role, or native tool fails, report the actual
+returned error and do not claim unavailability without evidence. A successful
+selection is not a child-agent invocation. These are instructions for the agent,
+not a host-enforced guarantee of delegation.
+
+For substantive work, record the delegation or direct-completion reason in one
+sentence in the plan or progress update and keep the existing compact execution
+footer. Do not create a separate delegation report file.
+
 ## Live verification
 
 verify --live is explicit, uses real Codex allowance, and starts at most two
