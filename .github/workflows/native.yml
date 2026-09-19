@@ -1,0 +1,85 @@
+name: native-release-python
+
+on:
+  push:
+    paths:
+      - ".github/workflows/native.yml"
+      - "README.md"
+      - "LICENSE"
+      - "NOTICE"
+      - "SECURITY.md"
+      - "CONTRIBUTING.md"
+      - "CHANGELOG.md"
+      - "VERSION"
+      - "release-manifest.json"
+      - "astra-luna.py"
+      - "astra_luna/**"
+      - "tests_python/**"
+      - "scripts/release_python.py"
+      - "docs/PUBLIC_GUIDE.md"
+      - "docs/VALIDATION.md"
+      - "docs/UPSTREAM.md"
+  pull_request:
+    paths:
+      - ".github/workflows/native.yml"
+      - "README.md"
+      - "LICENSE"
+      - "NOTICE"
+      - "SECURITY.md"
+      - "CONTRIBUTING.md"
+      - "CHANGELOG.md"
+      - "VERSION"
+      - "release-manifest.json"
+      - "astra-luna.py"
+      - "astra_luna/**"
+      - "tests_python/**"
+      - "scripts/release_python.py"
+      - "docs/PUBLIC_GUIDE.md"
+      - "docs/VALIDATION.md"
+      - "docs/UPSTREAM.md"
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-14
+          - ubuntu-24.04
+          - windows-2022
+        python-version:
+          - "3.11"
+          - "3.13"
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUTF8: "1"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run Python tests
+        run: python -m unittest discover -s tests_python -p "test_*.py" -v
+
+      - name: Build and inspect source/runtime ZIP
+        run: python scripts/release_python.py --output-dir release-ci
+
+      - name: Verify ZIP output
+        run: >-
+          python -c "from pathlib import Path; import zipfile;
+          out=Path('release-ci');
+          archives=list(out.glob('astra-luna-native-0.4.0-python.zip'));
+          assert len(archives)==1 and (out/'SHA256SUMS').is_file();
+          names=zipfile.ZipFile(archives[0]).namelist();
+          root='astra-luna-native-0.4.0-python/';
+          assert root+'astra-luna.py' in names and root+'SHA256SUMS' in names;
+          assert all('__pycache__' not in n and not n.endswith('.pyc') for n in names)"

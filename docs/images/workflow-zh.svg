@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="590" viewBox="0 0 1280 590" role="img">
+<title>Astra Luna 使用流程</title>
+<rect width="1280" height="590" fill="#10171D"/>
+<text x="48" y="51" fill="#00FFCC" font-size="21" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">ASTRA / LUNA NATIVE</text>
+<text x="48" y="115" fill="#F3F7F9" font-size="40" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">安装一次，在 Codex 中工作，分层验证结果。</text>
+<text x="48" y="156" fill="#B9C8D2" font-size="23" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">Python 3.11+  ·  官方 Codex CLI  ·  无需常驻服务</text>
+<rect x="48" y="203" width="384" height="290" rx="16" fill="#1A252E"/>
+<rect x="70" y="225" width="45" height="40" rx="9" fill="#00FFCC"/>
+<text x="83" y="252" fill="#10171D" font-size="25" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">1</text>
+<text x="130" y="251" fill="#00FFCC" font-size="22" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">安装</text>
+<text x="70" y="311" fill="#F3F7F9" font-size="25" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">先预览，再应用并检查</text>
+<text x="70" y="360" fill="#F3F7F9" font-size="23" font-family="ui-monospace, Menlo, monospace">install --dry-run</text>
+<text x="70" y="398" fill="#F3F7F9" font-size="23" font-family="ui-monospace, Menlo, monospace">install --yes</text>
+<text x="70" y="436" fill="#F3F7F9" font-size="23" font-family="ui-monospace, Menlo, monospace">doctor</text>
+<text x="70" y="471" fill="#B9C8D2" font-size="19" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">使用 Python 运行命令</text>
+<rect x="448" y="203" width="384" height="290" rx="16" fill="#1A252E"/>
+<rect x="470" y="225" width="45" height="40" rx="9" fill="#00FFCC"/>
+<text x="483" y="252" fill="#10171D" font-size="25" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">2</text>
+<text x="530" y="251" fill="#00FFCC" font-size="22" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">使用</text>
+<text x="470" y="311" fill="#F3F7F9" font-size="25" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">打开新的 Codex 任务</text>
+<text x="470" y="360" fill="#F3F7F9" font-size="23" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">正常描述需求</text>
+<text x="470" y="398" fill="#F3F7F9" font-size="23" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">Astra 规划与最终验收</text>
+<text x="470" y="436" fill="#F3F7F9" font-size="23" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">按需使用 0–5 个 Luna</text>
+<text x="470" y="471" fill="#B9C8D2" font-size="19" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">小任务可由主 Agent 直接完成</text>
+<rect x="848" y="203" width="384" height="290" rx="16" fill="#1A252E"/>
+<rect x="870" y="225" width="45" height="40" rx="9" fill="#00FFCC"/>
+<text x="883" y="252" fill="#10171D" font-size="25" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">3</text>
+<text x="930" y="251" fill="#00FFCC" font-size="22" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">验证</text>
+<text x="870" y="311" fill="#F3F7F9" font-size="25" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">区分本地检查与真实任务</text>
+<text x="870" y="360" fill="#F3F7F9" font-size="23" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">doctor：本地是否就绪</text>
+<text x="870" y="398" fill="#F3F7F9" font-size="23" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">select：选择执行角色</text>
+<text x="870" y="436" fill="#F3F7F9" font-size="23" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">verify --live：真实任务</text>
+<text x="870" y="471" fill="#B9C8D2" font-size="19" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">真实验收会使用模型额度</text>
+<text x="48" y="554" fill="#B9C8D2" font-size="22" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">使用流程示意；是否委派及实际人数由任务决定。</text>
+</svg>

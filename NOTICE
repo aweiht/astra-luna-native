@@ -1,0 +1,11 @@
+Astra / Luna Native
+
+This distribution is provided under the Apache License, Version 2.0.
+See LICENSE for the complete license text.
+
+The installer, daily role selector, managed instructions, and verification
+runtime are implemented in this repository. No other agent-orchestration
+project is bundled or required for installation or execution.
+
+The Python runtime uses only the Python 3.11+ standard library and invokes
+the official Codex CLI for client capabilities and model execution.
