@@ -1,15 +1,20 @@
 # Changelog
 
-## 0.5.0 — Unreleased
+## 0.6.0 — Unreleased
 
-- Rename the project and repository to Codex Adaptive Agents. Keep the existing
-  entry script, resource directory and managed role identifiers for in-place
-  upgrades from Astra / Luna Native.
-- Add self-contained installation, verification and upgrade prompts with the
-  canonical repository URL in both READMEs.
-- Validate supported prior release defaults during upgrades, preserve the
-  original pre-install values for uninstall, and reject user-edited conflicts
-  or unsupported receipt versions. Models still ship with each project release.
+- Set the public project identity to Codex Adaptive Agents and use the
+  `codex-adaptive-agents.py` entry point, `codex_adaptive_agents` package,
+  `codex-adaptive-agents` resource directory, `CODEX_ADAPTIVE_AGENTS` marker,
+  and `.codex-adaptive-agents/` project cache.
+- Keep the `gpt-6-astra` root model, `gpt-5.6-luna` child model, and
+  `adaptive_luna_*` roles unchanged.
+- Add self-contained installation, verification, update, and optional live
+  prompts with the canonical repository URL in both READMEs.
+- Document normal future-version updates through a reviewed plan, backup, and
+  local `--version`/`doctor` checks. This entry does not claim remote CI or live
+  model evidence for 0.6.0.
+
+## 0.5.0 — Prior source snapshot
 
 - Restrict `recover` to interrupted transactions and require an explicit backup
   for rollback; reject unsupported `--dry-run` requests before any command runs.
@@ -18,8 +23,7 @@
 - Validate backup ancestry before directory creation and reject malformed
   receipt fields with structured errors.
 - Record ownership of newly created configuration files and empty tables so
-  uninstall removes only those without subsequent user content; retain safe
-  behavior for older receipts without these records.
+  uninstall removes only those without subsequent user content.
 - Tie validation claims to the tested commit and separate published CI evidence
   from later local regression checks.
 
@@ -72,12 +76,12 @@
 This transition defines a Python-only source and runtime ZIP using Python 3.11+
 and the standard library.
 
-- The entry script is astra-luna.py; the source and runtime payload use the
+- The entry script is codex-adaptive-agents.py; the source and runtime payload use the
   same explicit allowlist.
-- The package has no pip dependency, Go requirement, compiled binary, daemon,
-  MCP server, lifecycle Hook, or background service.
+- The package has no pip dependency, compiled binary, daemon, MCP server,
+  lifecycle Hook, or background service.
 - Installation keeps the standalone entry at
-  astra-luna-native/runtime/astra-luna.py under the selected Codex home.
+  codex-adaptive-agents/runtime/codex-adaptive-agents.py under the selected Codex home.
 - The package builder writes an in-package and an external SHA256 checksum set,
   rejects unsafe links and symlinks, and refuses to overwrite existing output.
 - The workflow defines Python 3.11 and 3.13 checks on macOS, Linux, and
@@ -98,17 +102,5 @@ and the standard library.
   separately in the receipt for uninstall and recovery.
 
 
-## 0.3.0 — 2026-09-15 (historical predecessor)
-
-The 0.3.0 work packaged the earlier native route as a pure Go single binary.
-Its source, binary archives, and validation records remain repository history;
-they are not requirements or live evidence for 0.4.0.
-
-- Added the earlier astra-luna entry point and native delegation commands.
-- Added five bounded Luna role definitions selected by a daily policy.
-- Added transactional installation, hash checks, private backups, and project
-  cache support.
-- Added source and prebuilt release manifests with package checksums.
-
-The current 0.5.0 contract and package contents are defined by README.md,
+The current 0.6.0 contract and package contents are defined by README.md,
 docs/PUBLIC_GUIDE.md, and release-manifest.json.

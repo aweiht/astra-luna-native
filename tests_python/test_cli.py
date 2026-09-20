@@ -11,8 +11,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from astra_luna import cli, install, policy, process_registry, verify
-from astra_luna.platform import clean_env, run
+from codex_adaptive_agents import cli, install, policy, process_registry, verify
+from codex_adaptive_agents.platform import clean_env, run
 
 
 class CLITests(unittest.TestCase):
@@ -101,7 +101,7 @@ else: sys.exit(2)
 from pathlib import Path
 entry=sys.argv.pop(1)
 sys.path.insert(0,str(Path(entry).parent))
-from astra_luna import policy
+from codex_adaptive_agents import policy
 policy.fetch_sources=lambda *a,**k: []
 policy.FetchSources=policy.fetch_sources
 sys.argv[0]=entry
@@ -118,7 +118,7 @@ runpy.run_path(entry,run_name='__main__')
                               '--codex', str(launcher), *args], env=env, timeout=30)
                 self.assertEqual(result.returncode, expect, result.stdout.decode('utf-8') + result.stderr.decode('utf-8'))
                 return json.loads(result.stdout)
-            entry = source / 'astra-luna.py'
+            entry = source / 'codex-adaptive-agents.py'
             initial = invoke(entry, 'doctor', expect=1)
             self.assertEqual(initial['status'], 'NOT_READY')
             plan = invoke(entry, 'install', '--dry-run')
@@ -186,7 +186,7 @@ runpy.run_path(entry,run_name='__main__')
                     patch.object(policy, 'DirectSupportedEfforts', return_value=list(policy.EFFORTS)):
                 other = policy.select(home, other_project, now=now)
             self.assertEqual(other['role'], 'adaptive_luna_max')
-            other_cache = other_project / '.astra-luna/state/policy-cache.json'
+            other_cache = other_project / '.codex-adaptive-agents/state/policy-cache.json'
             other_before = other_cache.read_bytes()
 
             snapshot = {

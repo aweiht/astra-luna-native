@@ -14,4 +14,4 @@ dist/
 *.db-shm
 *.db-wal
 
-.astra-luna/
+.codex-adaptive-agents/

@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from astra_luna import transport, verify
+from codex_adaptive_agents import transport, verify
 
 
 PASSING_TAGS = r'''#!/usr/bin/env python3

@@ -1,15 +1,15 @@
 {
-  "captured_on": "2026-09-19",
+  "captured_on": "2026-09-20",
   "platform": "macOS arm64",
   "cli_version": "codex-cli 0.147.0",
-  "scope": "Existing local installation; public catalogue and policy; no model task started",
+  "scope": "Actual installed-entry checks; no model task started",
   "doctor_excerpt": {
-    "version": "0.4.0",
+    "version": "0.6.0",
     "status": "READY_FALLBACK",
     "managed_files_and_config": "PASS",
     "capabilities": "READY",
     "live_verified": false
   },
   "select_output": "adaptive_luna_max",
-  "commands_shown": "Equivalent source entry commands; capture used the installed entry with explicit Codex home. Private absolute paths omitted."
+  "commands_shown": "Equivalent source entry commands; capture used the installed entry with explicit Codex home. Private paths omitted."
 }

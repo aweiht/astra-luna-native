@@ -1,6 +1,6 @@
 # Contributing
 
-Codex Adaptive Agents 0.5.0 is a Python 3.11+ standard-library distribution.
+Codex Adaptive Agents 0.6.0 is a Python 3.11+ standard-library distribution.
 Keep changes small, observable, and compatible with the official Codex CLI. The
 runtime does not add a daemon, MCP server, lifecycle Hook, background
 scheduler, or provider switch.
@@ -8,7 +8,7 @@ scheduler, or provider switch.
 ## Development requirements
 
 Use Python 3.11 or newer. The project has no pip dependencies, compiled
-binary, or Go requirement for the 0.5.0 runtime and source package.
+binary, or Go requirement for the 0.6.0 runtime and source package.
 
 Run the repository checks before proposing a change:
 
@@ -27,12 +27,12 @@ py -3 scripts/release_python.py --output-dir "$env:TEMP\codex-adaptive-agents-re
 The release test builds in an isolated temporary directory and checks the ZIP
 member set, package checksums, external checksums, safe links, and refusal to
 overwrite an existing archive. Do not use the repository historical dist
-packages as current 0.5.0 evidence.
+packages as current 0.6.0 evidence.
 
 ## Release packaging
 
 The checked-in release manifest is the package allowlist. Source equals runtime
-for this release: the ZIP contains astra-luna.py, the astra_luna modules and
+for this release: the ZIP contains codex-adaptive-agents.py, the codex_adaptive_agents modules and
 public smoke assets, tests_python, public documents, license notices, VERSION,
 the manifest, the release script, and package checksums. It excludes Go code,
 historical Python scripts, private development evidence, local state, templates
@@ -52,12 +52,11 @@ covers every archive produced by that invocation.
 
 ## Release upgrade checklist
 
-Keep the previous release's default-profile snapshots and compatibility evidence
-as regression fixtures, add the new version's expected profile, and exercise the
-full old-install-to-upgrade path with its existing receipt. Check the reviewed
-plan, backup, rollback, conflict handling, and uninstall behavior before
-publishing. New model support arrives through a maintainer release update; this
-project does not promise a generic model-configuration layer.
+Record the current default profile, add the new version's expected profile, and
+exercise install, update, rollback, conflict handling, and uninstall. Check the
+reviewed plan and backup before publishing. New model support arrives through a
+maintainer release update; this project does not promise a generic
+model-configuration layer.
 
 ## Live verification
 
@@ -66,7 +65,7 @@ app-server test channel. It can consume the user's real Codex allowance and is
 bounded at 600 seconds:
 
 ~~~sh
-python3 astra-luna.py verify --live --project /path/to/project   --output /path/to/verification-output
+python3 codex-adaptive-agents.py verify --live --project /path/to/project   --output /path/to/verification-output
 ~~~
 
 Run this only when live evidence is intended. Report source tests, offline

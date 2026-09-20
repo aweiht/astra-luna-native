@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "project": "codex-adaptive-agents",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "release": "python-source",
   "status": "SOURCE_READY",
   "license": "Apache-2.0",
-  "entrypoint": "astra-luna.py",
+  "entrypoint": "codex-adaptive-agents.py",
   "archive_format": "zip",
   "archive_root_pattern": "codex-adaptive-agents-{version}-{target}",
   "output_directory": "dist/{version}-python",
@@ -13,7 +13,7 @@
   "checksums": {
     "package_file": "SHA256SUMS",
     "package_coverage": "every regular payload file except SHA256SUMS itself",
-    "external_file": "dist/0.5.0-python/SHA256SUMS",
+    "external_file": "dist/0.6.0-python/SHA256SUMS",
     "external_coverage": "every archive produced in this invocation"
   },
   "public_files": [
@@ -22,7 +22,7 @@
     "docs/images/README.md",
     "docs/images/workflow-en.svg",
     "docs/images/workflow-zh.svg",
-    "docs/images/cli-check.png",
+    "docs/images/cli-check.svg",
     "docs/images/cli-check.json",
     "CONTRIBUTING.md",
     "SECURITY.md",
@@ -44,7 +44,7 @@
       "docs/images/README.md",
       "docs/images/workflow-en.svg",
       "docs/images/workflow-zh.svg",
-      "docs/images/cli-check.png",
+      "docs/images/cli-check.svg",
       "docs/images/cli-check.json",
       "CONTRIBUTING.md",
       "SECURITY.md",
@@ -56,24 +56,24 @@
       "docs/PUBLIC_GUIDE.md",
       "docs/VALIDATION.md",
       "docs/UPSTREAM.md",
-      "astra-luna.py",
+      "codex-adaptive-agents.py",
       "scripts/release_python.py"
     ],
     "required_globs": [
-      "astra_luna/**/*.py",
-      "astra_luna/**/*.md",
+      "codex_adaptive_agents/**/*.py",
+      "codex_adaptive_agents/**/*.md",
       "tests_python/**/*.py"
     ]
   },
   "runtime": {
     "same_as": "source",
     "python": "3.11+ standard library",
-    "entrypoint": "astra-luna.py"
+    "entrypoint": "codex-adaptive-agents.py"
   },
   "excluded_paths": [
     ".orchestrator-dev/",
     ".reference/",
-    ".astra-luna/",
+    ".codex-adaptive-agents/",
     ".git/",
     "AGENTS.md",
     "CODEX_START_PROMPT.md",
@@ -83,7 +83,7 @@
     "internal/",
     "templates/",
     "tests/",
-    "astra-luna",
+    "codex-adaptive-agents",
     "SHA256SUMS",
     "scripts/build_release.py",
     "scripts/check_cancel.py",
@@ -105,15 +105,15 @@
   ],
   "verification": {
     "source_tests": "python3 -m unittest discover -s tests_python -p 'test_*.py' -v",
-    "package_build": "python3 scripts/release_python.py --output-dir dist/0.5.0-python",
-    "doctor": "python3 astra-luna.py doctor",
-    "live": "python3 astra-luna.py verify --live --project PATH --output PATH",
+    "package_build": "python3 scripts/release_python.py --output-dir dist/0.6.0-python",
+    "doctor": "python3 codex-adaptive-agents.py doctor",
+    "live": "python3 codex-adaptive-agents.py verify --live --project PATH --output PATH",
     "live_timeout_seconds": 600,
     "live_children": 2,
     "live_transport": "official transient stdio app-server test channel",
     "live_uses_model_quota": true,
     "remote_ci": "https://github.com/aweiht/codex-adaptive-agents/actions/workflows/native.yml",
-    "live_result": "historical 0.4.0 evidence: saved real public lifecycle replay and unchanged artifacts independently revalidated after verifier correction; original failure retained"
+    "live_result": "not rerun for 0.6.0; local installation and offline tests do not establish live model access"
   },
   "support": {
     "python": "3.11+ standard library; no pip, Go, or compiled binary",

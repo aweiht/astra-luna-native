@@ -30,7 +30,7 @@ class ReleaseBuilderTest(unittest.TestCase):
                 with self.assertRaises(release.ReleaseError):
                     release.safe_relative(value)
         self.assertEqual(release.safe_relative(".gitignore"), ".gitignore")
-        self.assertEqual(release.safe_pattern("astra_luna/**/*.py"), "astra_luna/**/*.py")
+        self.assertEqual(release.safe_pattern("codex_adaptive_agents/**/*.py"), "codex_adaptive_agents/**/*.py")
 
     def test_checksum_coverage_and_tamper_detection(self):
         with tempfile.TemporaryDirectory(prefix="release-checksum-") as temporary:
@@ -79,10 +79,10 @@ class ReleaseBuilderTest(unittest.TestCase):
             with zipfile.ZipFile(archive) as package:
                 names = package.namelist()
                 self.assertIn(root + "/", names)
-                self.assertIn(root + "/astra-luna.py", names)
+                self.assertIn(root + "/codex-adaptive-agents.py", names)
                 self.assertIn(root + "/scripts/release_python.py", names)
                 self.assertIn(root + "/tests_python/test_release.py", names)
-                self.assertNotIn(root + "/astra-luna", names)
+                self.assertNotIn(root + "/codex-adaptive-agents", names)
                 self.assertFalse(any("/cmd/" in name or "/internal/" in name for name in names))
                 self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
                 checksum = package.read(root + "/SHA256SUMS").decode("utf-8")

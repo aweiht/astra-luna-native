@@ -7,7 +7,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from astra_luna import platform as p
+from codex_adaptive_agents import platform as p
 
 
 class PlatformTests(unittest.TestCase):
@@ -95,7 +95,7 @@ class PlatformTests(unittest.TestCase):
                           'stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);'
                           + ('' if exits else 'time.sleep(20)'))
                 if exits and sys.platform == 'darwin':
-                    from astra_luna.process_tree import _DarwinSnapshot
+                    from codex_adaptive_agents.process_tree import _DarwinSnapshot
                     if not _DarwinSnapshot().original_versions:
                         self.skipTest('older Darwin lacks detached-orphan original-parent versions')
                 try:
@@ -128,40 +128,40 @@ class PlatformTests(unittest.TestCase):
 
     @unittest.skipIf(os.name == 'nt', 'POSIX identities only')
     def test_tracker_does_not_signal_reused_pid(self):
-        from astra_luna.process_tree import Tracker
+        from codex_adaptive_agents.process_tree import Tracker
         current = {10: (100, 1, 1, 0), 11: (200, 100, 2, 1)}
         tracker = Tracker(10, lambda: dict(current), original_parent=True)
         tracker.scan()
         # The same PID now represents a different process and family.
         current[11] = (201, 999, 3, 999)
         current[12] = (202, 201, 4, 3)
-        with patch('astra_luna.process_tree.os.kill') as kill:
+        with patch('codex_adaptive_agents.process_tree.os.kill') as kill:
             tracker.cleanup()
         self.assertEqual({call.args[0] for call in kill.call_args_list}, {10})
 
     @unittest.skipIf(os.name == 'nt', 'POSIX identities only')
     def test_legacy_reserved_version_is_not_used_as_parent_identity(self):
-        from astra_luna.process_tree import Tracker
+        from codex_adaptive_agents.process_tree import Tracker
         current = {10: (100, 1, 7, 0), 20: (200, 999, 8, 7)}
         tracker = Tracker(10, lambda: dict(current), original_parent=True)
-        with patch('astra_luna.process_tree.os.kill') as kill:
+        with patch('codex_adaptive_agents.process_tree.os.kill') as kill:
             tracker.cleanup()
         self.assertEqual({call.args[0] for call in kill.call_args_list}, {10})
 
     @unittest.skipIf(os.name == 'nt', 'POSIX process group alias')
     def test_zero_pid_cannot_be_adopted_or_signalled(self):
-        from astra_luna.process_tree import Tracker
+        from codex_adaptive_agents.process_tree import Tracker
         current = {10: (100, 1, 7, 0), 0: (0, 0, 0, 0)}
         tracker = Tracker(10, lambda: dict(current), original_parent=True, own_group=True)
-        with patch('astra_luna.process_tree.os.getpgid', return_value=10), \
-                patch('astra_luna.process_tree.os.kill') as kill:
+        with patch('codex_adaptive_agents.process_tree.os.getpgid', return_value=10), \
+                patch('codex_adaptive_agents.process_tree.os.kill') as kill:
             tracker.cleanup()
             with self.assertRaises(RuntimeError):
                 tracker._signal(0, 0, 9)
         self.assertEqual({call.args[0] for call in kill.call_args_list}, {10})
 
     def test_linux_process_name_is_parsed_as_bytes(self):
-        from astra_luna.process_tree import _linux_identity
+        from codex_adaptive_agents.process_tree import _linux_identity
         fields = [b'S', b'7'] + [b'0'] * 17 + [b'1234']
         raw = b'42 (bad\xff) name) ' + b' '.join(fields)
         with patch.object(Path, 'read_bytes', return_value=raw):
@@ -177,7 +177,7 @@ class PlatformTests(unittest.TestCase):
                       f'subprocess.Popen([sys.executable,"-c",{child!r}]);time.sleep(20)')
             script = ('import os,sys,threading;from unittest.mock import patch;'
                       f'sys.path.insert(0,{str(Path(__file__).resolve().parents[1])!r});'
-                      'from astra_luna import process_tree as t;'
+                      'from codex_adaptive_agents import process_tree as t;'
                       'r,w=os.pipe();rr,rw=os.pipe();'
                       'threading.Timer(.3,lambda:os.close(w)).start();'
                       '\nwith patch.object(t.Tracker,"cleanup",side_effect=RuntimeError("injected")):'
@@ -199,7 +199,7 @@ class PlatformTests(unittest.TestCase):
             result = p.run([sys.executable, '-c', f'import os;os.kill(os.getpid(),{sig})'])
             self.assertEqual(result.returncode, -sig)
         with self.assertRaisesRegex(RuntimeError, 'cleanup was not confirmed'):
-            p.run(['/nonexistent/astra-luna-command'])
+            p.run(['/nonexistent/codex-adaptive-agents-command'])
 
     @unittest.skipUnless(sys.platform == 'linux', 'Linux subreaper only')
     def test_double_fork_detached_orphan_stopped(self):

@@ -1,4 +1,4 @@
-"""Reviewed managed-key installation, legacy upgrades and conflict-safe rollback."""
+"""Reviewed managed-key installation, versioned upgrades and conflict-safe rollback."""
 from __future__ import annotations
 
 import hashlib
@@ -14,64 +14,29 @@ from . import __version__, toml_edit
 from .platform import atomic, command_text, encode, file_lock, loads, read, safe
 
 ROOT = Path(__file__).resolve().parents[1]
-RESOURCE = 'astra-luna-native'
-ENTRY = RESOURCE + '/runtime/astra-luna.py'
-MARKER = 'ASTRA_LUNA_NATIVE'
+RESOURCE = 'codex-adaptive-agents'
+ENTRY = RESOURCE + '/runtime/codex-adaptive-agents.py'
+MARKER = 'CODEX_ADAPTIVE_AGENTS'
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
-RUNTIME_FILES = ('astra-luna.py', 'astra_luna/__init__.py', 'astra_luna/cli.py',
- 'astra_luna/install.py', 'astra_luna/toml_edit.py', 'astra_luna/platform.py',
- 'astra_luna/policy.py', 'astra_luna/verify.py', 'astra_luna/transport.py', 'astra_luna/process_tree.py',
- 'astra_luna/process_registry.py',
- 'astra_luna/assets/parent.md',
- 'astra_luna/assets/leaf.md', 'astra_luna/assets/contract.md',
- 'astra_luna/assets/normalize_tags.py', 'astra_luna/assets/unique_numbers.py')
-# The public 0.4.0 schema-4 receipt predates the process supervisor and registry.
-# This complete baseline is required for upgrades; extra files must still belong
-# to the known owned_paths set. New receipts include all current RUNTIME_FILES.
-PREVIOUS_SCHEMA4_RUNTIME = ('astra-luna.py', 'astra_luna/__init__.py', 'astra_luna/cli.py',
- 'astra_luna/install.py', 'astra_luna/toml_edit.py', 'astra_luna/platform.py',
- 'astra_luna/policy.py', 'astra_luna/verify.py', 'astra_luna/transport.py',
- 'astra_luna/assets/parent.md', 'astra_luna/assets/leaf.md', 'astra_luna/assets/contract.md',
- 'astra_luna/assets/normalize_tags.py', 'astra_luna/assets/unique_numbers.py')
-LEGACY_RUNTIME = ('astra-luna', 'VERSION', 'scripts/native.py', 'scripts/install_native.py',
- 'scripts/native_smoke.py', 'scripts/verify_native_events.py', 'internal/configmerge/toml_edit.py',
- 'templates/native/parent.md', 'templates/native/leaf.md', 'templates/smoke/contract.md',
- 'templates/smoke/normalize.py', 'templates/smoke/unique.py', 'templates/smoke/acceptance.py')
-DESIRED = {'model':'"gpt-6-astra"', 'model_reasoning_effort':'"max"',
- 'agents.enabled':'true', 'agents.default_subagent_model':'"gpt-5.6-luna"',
- 'agents.default_subagent_reasoning_effort':'"max"',
- 'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5'}
+RUNTIME_FILES = ('codex-adaptive-agents.py', 'codex_adaptive_agents/__init__.py', 'codex_adaptive_agents/cli.py',
+ 'codex_adaptive_agents/install.py', 'codex_adaptive_agents/toml_edit.py', 'codex_adaptive_agents/platform.py',
+ 'codex_adaptive_agents/policy.py', 'codex_adaptive_agents/verify.py', 'codex_adaptive_agents/transport.py', 'codex_adaptive_agents/process_tree.py',
+ 'codex_adaptive_agents/process_registry.py',
+ 'codex_adaptive_agents/assets/parent.md',
+ 'codex_adaptive_agents/assets/leaf.md', 'codex_adaptive_agents/assets/contract.md',
+ 'codex_adaptive_agents/assets/normalize_tags.py', 'codex_adaptive_agents/assets/unique_numbers.py')
 
 # Receipt configuration is a compatibility contract, rather than a claim
-# that any model named by a receipt is acceptable.  These are literal snapshots
-# of defaults emitted by releases for which source evidence exists.  A
-# maintainer may add a future profile in source (and tests may temporarily add
-# one); receipt data never extends this table.
+# that any model named by a receipt is acceptable.  A maintainer may add a
+# future profile in source (and tests may temporarily add one); receipt data
+# never extends this table.
 VERSION_PROFILES = {
-    '0.3.0': {
+    '0.6.0': {
         'model':'"gpt-6-astra"', 'model_reasoning_effort':'"max"',
         'agents.enabled':'true', 'agents.default_subagent_model':'"gpt-5.6-luna"',
         'agents.default_subagent_reasoning_effort':'"max"',
         'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5',
     },
-    '0.4.0': {
-        'model':'"gpt-6-astra"', 'model_reasoning_effort':'"max"',
-        'agents.enabled':'true', 'agents.default_subagent_model':'"gpt-5.6-luna"',
-        'agents.default_subagent_reasoning_effort':'"max"',
-        'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5',
-    },
-    '0.5.0': {
-        'model':'"gpt-6-astra"', 'model_reasoning_effort':'"max"',
-        'agents.enabled':'true', 'agents.default_subagent_model':'"gpt-5.6-luna"',
-        'agents.default_subagent_reasoning_effort':'"max"',
-        'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5',
-    },
-}
-LEGACY_DEFAULTS = {
-    'model':'"gpt-6-astra"', 'model_reasoning_effort':'"max"',
-    'agents.enabled':'true', 'agents.default_subagent_model':'"gpt-5.6-luna"',
-    'agents.default_subagent_reasoning_effort':'"max"',
-    'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5',
 }
 VERSION_RE = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z')
 MISSING = object()
@@ -123,29 +88,15 @@ def _current_profile():
 
 def _receipt_profile(receipt):
     """Resolve the trusted defaults used to create an existing receipt."""
-    schema = receipt['schema']
+    if receipt['schema'] != 4:
+        raise ValueError('unsupported installation schema')
     version = receipt.get('version')
-    if version is None:
-        # The historical schema-1/2 Python/Go installers had no version field.
-        # Their source declares the same Astra/Luna defaults, so this is a
-        # narrow schema-bound compatibility path rather than a current-default
-        # fallback.  Later schemas always wrote an explicit version.
-        if schema not in (1, 2):
-            raise ValueError('unsupported installation version')
-        return dict(LEGACY_DEFAULTS)
     if not isinstance(version, str):
         raise ValueError('unsupported installation version')
-    profile = _trusted_profile(version)
     version_number = _version_tuple(version)
-    if schema < 3:
-        # No released schema-1/2 receipt carries a version.  Refuse a forged
-        # version rather than assigning it a profile based on receipt content.
-        raise ValueError('unsupported installation version for receipt schema')
-    if schema == 3 and version != '0.3.0':
-        raise ValueError('unsupported installation version for receipt schema')
-    if schema == 4 and version_number < (0, 4, 0):
-        raise ValueError('unsupported installation version for receipt schema')
-    return profile
+    if version_number < (0, 6, 0):
+        raise ValueError('unsupported installation version')
+    return _trusted_profile(version)
 
 
 def _lookup(obj, key):
@@ -173,7 +124,7 @@ def _effective_desired(raw, profile, *, check_provider=True):
 def _receipt_managed_keys(receipt, profile=None):
     keys = receipt.get('managed_keys')
     if keys is None:
-        return None
+        raise ValueError('invalid managed configuration receipt')
     if not isinstance(keys, list):
         raise ValueError('invalid managed configuration receipt')
     if any(not isinstance(key, str) or key not in toml_edit.TYPES for key in keys):
@@ -192,14 +143,11 @@ def _receipt_managed_keys(receipt, profile=None):
 
 def _managed_keys(raw, receipt, profile):
     stored = _receipt_managed_keys(receipt, profile)
-    if stored is not None:
-        required = set(_effective_desired(raw, profile, check_provider=False))
-        row_keys = {row['key'] for row in receipt.get('config_changes', [])}
-        if not required <= set(stored) or not row_keys <= set(stored):
-            raise ValueError('invalid managed configuration receipt')
-        return stored
-    rows = {row['key'] for row in receipt.get('config_changes', [])}
-    return sorted(rows | set(_effective_desired(raw, profile, check_provider=False)))
+    required = set(_effective_desired(raw, profile, check_provider=False))
+    row_keys = {row['key'] for row in receipt.get('config_changes', [])}
+    if not required <= set(stored) or not row_keys <= set(stored):
+        raise ValueError('invalid managed configuration receipt')
+    return stored
 
 
 def _validate_managed_config(raw, receipt, profile):
@@ -242,26 +190,9 @@ def _check_upgrade_direction(receipt):
         raise ValueError('installation downgrade unsupported')
 
 
-def legacy(schema):
-    result = {f'agents/adaptive_luna_{e}.toml' for e in EFFORTS}
-    if schema < 3:
-        result.add(RESOURCE + '/luna-selector')
-    if schema == 2:
-        result.update(RESOURCE + '/runtime/' + p for p in LEGACY_RUNTIME)
-    if schema == 3:
-        result.add(RESOURCE + '/runtime/astra-luna')
-    if schema == 4:
-        result.update(RESOURCE + '/runtime/' + p for p in RUNTIME_FILES)
-    return result
-
-
 def owned_paths():
-    return legacy(2) | legacy(3) | legacy(4)
-
-
-def previous_schema4():
     result = {f'agents/adaptive_luna_{e}.toml' for e in EFFORTS}
-    result.update(RESOURCE + '/runtime/' + p for p in PREVIOUS_SCHEMA4_RUNTIME)
+    result.update(RESOURCE + '/runtime/' + p for p in RUNTIME_FILES)
     return result
 
 
@@ -376,7 +307,7 @@ def load(home):
         raise ValueError('invalid installation receipt')
     schema = receipt.get('schema')
     recorded_home = receipt.get('codex_home')
-    if (type(schema) is not int or schema not in (1, 2, 3, 4) or
+    if (type(schema) is not int or schema != 4 or
             type(recorded_home) is not str or
             (recorded_home != str(home) and not _same_real_directory(Path(recorded_home), home))):
         raise ValueError('invalid installation receipt')
@@ -386,17 +317,12 @@ def load(home):
         raise ValueError('invalid receipt status')
     profile = _receipt_profile(receipt)
     owned = receipt.get('owned_files', {})
-    required = legacy(schema)
+    required = owned_paths()
     if not isinstance(owned, dict):
         raise ValueError('invalid receipt paths')
     owned_keys = set(owned)
-    if not required <= owned_keys:
-        if schema != 4 or not previous_schema4() <= owned_keys:
-            raise ValueError('invalid receipt paths')
-    if not owned_keys <= owned_paths():
+    if owned_keys != required:
         raise ValueError('invalid receipt paths')
-    if schema < 3 and set(owned) != required:
-        raise ValueError('invalid legacy receipt paths')
     if any(not isinstance(h, str) or not re.fullmatch('[0-9a-f]{64}', h) for h in owned.values()):
         raise ValueError('invalid receipt hash')
     changes = receipt.get('config_changes', [])
@@ -427,7 +353,8 @@ def load(home):
             not block.startswith(f'<!-- BEGIN {MARKER} -->\n') or
             not block.endswith(f'\n<!-- END {MARKER} -->')):
         raise ValueError('invalid instruction receipt')
-    receipt_metadata(receipt)
+    if receipt_metadata(receipt) is None:
+        raise ValueError('invalid installation metadata')
     _receipt_managed_keys(receipt, profile)
     return receipt
 
@@ -450,7 +377,7 @@ def validate(home):
 
 
 def native_block(home, codex_home=None):
-    template = read(ROOT / 'astra_luna/assets/parent.md').decode('utf-8')
+    template = read(ROOT / 'codex_adaptive_agents/assets/parent.md').decode('utf-8')
     block_home = Path(codex_home) if codex_home is not None else Path(home)
     invocation = command_text([sys.executable, '-I', '-B', str(block_home / ENTRY), '--codex-home', str(block_home)])
     project_arg = '.'
@@ -460,7 +387,7 @@ def native_block(home, codex_home=None):
 
 def role(effort):
     import json
-    instruction = read(ROOT / 'astra_luna/assets/leaf.md').decode('utf-8')
+    instruction = read(ROOT / 'codex_adaptive_agents/assets/leaf.md').decode('utf-8')
     return (f'name = "adaptive_luna_{effort}"\n'
             f'description = "Luna {effort} leaf worker selected by the daily policy; bounded execution only."\n'
             'model = "gpt-5.6-luna"\n'

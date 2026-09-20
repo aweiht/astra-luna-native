@@ -8,7 +8,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from astra_luna import policy
+from codex_adaptive_agents import policy
 
 
 UTC = timezone.utc
@@ -105,7 +105,7 @@ class PolicyTests(unittest.TestCase):
                 patch.object(policy, "FetchSources", return_value=[]):
             result = policy.select(self.home, self.project, now=self.now)
 
-        cache = json.loads((self.project / ".astra-luna/state/policy-cache.json").read_text())
+        cache = json.loads((self.project / ".codex-adaptive-agents/state/policy-cache.json").read_text())
         self.assertEqual(result["role"], "adaptive_luna_max")
         self.assertEqual(result["status"], "fallback")
         self.assertTrue(result["stale"])
@@ -194,7 +194,7 @@ class PolicyTests(unittest.TestCase):
                 patch.object(policy, "FetchSources", return_value=[]):
             result = policy.select(self.home, self.project, now=self.now)
 
-        cache = json.loads((self.project / ".astra-luna/state/policy-cache.json").read_text())
+        cache = json.loads((self.project / ".codex-adaptive-agents/state/policy-cache.json").read_text())
         self.assertEqual(result["role"], "adaptive_luna_max")
         self.assertEqual(cache["capabilities_at"], policy._stamp(self.now))
         self.assertNotIn("used fresh public capability snapshot", " ".join(result["reasons"]))
@@ -210,7 +210,7 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(result["effort"], "")
         self.assertEqual(result["status"], "blocked")
         self.assertTrue(result["stale"])
-        cache = json.loads((self.project / ".astra-luna/state/policy-cache.json").read_text())
+        cache = json.loads((self.project / ".codex-adaptive-agents/state/policy-cache.json").read_text())
         self.assertEqual(cache["last_success"], "0001-01-01T00:00:00Z")
 
     def test_no_iana_database_uses_system_local_date_and_portable_utc(self):

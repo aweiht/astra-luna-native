@@ -1,9 +1,16 @@
-# Codex Adaptive Agents README illustrations
+# Codex Adaptive Agents documentation images
 
-- `workflow-en.svg` and `workflow-zh.svg` are usage diagrams, not screenshots of a running Codex task.
-- `cli-check.png` presents selected fields from actual local `doctor` output and the actual `select` result captured on 2026-09-19, using version 0.4.0 and Codex CLI 0.147.0 on macOS arm64. It is a typeset terminal-output illustration, not a screenshot of the Codex app; the historical capture remains unchanged.
-- `cli-check.json` contains the public data used for that image. `doctor` fields are extracted from their nested JSON objects for readability. Absolute private paths and unrelated response fields are omitted; the source-entry commands shown are equivalent to the installed-entry commands used for capture.
+- `workflow-en.svg` and `workflow-zh.svg` illustrate the usage flow.
+- `cli-check.svg` typesets selected actual local `doctor` and `select` output
+  captured on 2026-09-20 using the installed 0.6.0 entry on macOS arm64.
+- `cli-check.json` contains the public fields used to render the CLI image.
+  Private paths and unrelated fields are omitted. The source-entry commands
+  shown are equivalent to the installed-entry commands used for capture.
 
-The illustrated installation already existed. Its public capability and policy caches were refreshed before capture. `READY_FALLBACK` means local readiness with a conservative supported role; `live_verified: false` is intentional. These commands did not start a model task, and the image is not evidence of a fresh installation or real model delegation. A different machine or date can select a different role or return a different status.
+The CLI image is a command-output illustration, not a Codex app screenshot.
+`READY_FALLBACK` means local readiness with a conservative supported role;
+selection does not start a model task. No live model verification was run to
+create this image. A different installation or date can return another result.
 
-All images are original project documentation assets and use the repository's [Apache-2.0 license](../../LICENSE).
+All images are original project documentation assets under the repository's
+[Apache-2.0 license](../../LICENSE).

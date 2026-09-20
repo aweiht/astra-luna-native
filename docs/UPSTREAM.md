@@ -9,13 +9,13 @@ built from the explicit file list in [release-manifest.json](../release-manifest
 
 | Component | Responsibility |
 | --- | --- |
-| `astra_luna/cli.py` | Command parsing, installation flow, and local readiness checks |
-| `astra_luna/install.py` | Managed files, plans, receipts, backups, conflicts, and recovery |
-| `astra_luna/toml_edit.py` | Targeted Codex configuration edits that preserve unrelated content |
-| `astra_luna/policy.py` | Public capability checks, daily role selection, cache, and fallback |
-| `astra_luna/platform.py` | Portable files, locks, command invocation, and process lifetime |
-| `astra_luna/transport.py` | Temporary official stdio channel for explicit live verification |
-| `astra_luna/verify.py` and `astra_luna/assets/` | Native task contracts, independent result checks, and managed agent instructions |
+| `codex_adaptive_agents/cli.py` | Command parsing, installation flow, and local readiness checks |
+| `codex_adaptive_agents/install.py` | Managed files, plans, receipts, backups, conflicts, and recovery |
+| `codex_adaptive_agents/toml_edit.py` | Targeted Codex configuration edits that preserve unrelated content |
+| `codex_adaptive_agents/policy.py` | Public capability checks, daily role selection, cache, and fallback |
+| `codex_adaptive_agents/platform.py` | Portable files, locks, command invocation, and process lifetime |
+| `codex_adaptive_agents/transport.py` | Temporary official stdio channel for explicit live verification |
+| `codex_adaptive_agents/verify.py` and `codex_adaptive_agents/assets/` | Native task contracts, independent result checks, and managed agent instructions |
 | `scripts/release_python.py` | Source-package allowlist, checksums, and archive validation |
 
 The runtime imports Python standard-library modules and its own local modules.

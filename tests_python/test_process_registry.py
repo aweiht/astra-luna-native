@@ -14,11 +14,11 @@ import time
 import unittest
 from unittest.mock import patch
 
-from astra_luna import process_registry
-from astra_luna.platform import atomic, encode
+from codex_adaptive_agents import process_registry
+from codex_adaptive_agents.platform import atomic, encode
 
 
-ENTRY = Path(__file__).resolve().parents[1] / "astra-luna.py"
+ENTRY = Path(__file__).resolve().parents[1] / "codex-adaptive-agents.py"
 PYTHON = sys.executable
 
 
@@ -26,7 +26,7 @@ class ProcessRegistryTests(unittest.TestCase):
     """Exercise the external launcher boundary, including incomplete ledgers."""
 
     def setUp(self):
-        self._temporary = tempfile.TemporaryDirectory(prefix="astra-luna-process-registry-")
+        self._temporary = tempfile.TemporaryDirectory(prefix="codex-adaptive-agents-process-registry-")
         self.project = Path(self._temporary.name) / "MiXeDProject"
         self.project.mkdir()
         self.project = self.project.resolve()
@@ -147,7 +147,7 @@ class ProcessRegistryTests(unittest.TestCase):
             event = self._read_json(stderr_path)
             if marker.exists() and event and event.get("entry_id"):
                 entry_id = event["entry_id"]
-                entry_path = self.project / ".astra-luna" / "processes" / run_id / (entry_id + ".json")
+                entry_path = self.project / ".codex-adaptive-agents" / "processes" / run_id / (entry_id + ".json")
                 entry = self._read_json(entry_path)
                 if entry and entry.get("process"):
                     return {
@@ -178,7 +178,7 @@ class ProcessRegistryTests(unittest.TestCase):
 
     def test_init_empty_and_unknown_run_are_rejected(self):
         run_id = self._init_run()
-        run_path = self.project / ".astra-luna" / "processes" / run_id / "run.json"
+        run_path = self.project / ".codex-adaptive-agents" / "processes" / run_id / "run.json"
         run_doc = self._read_json(run_path)
         self.assertEqual(run_doc["entry_ids"], [])
         self.assertEqual(self._invoke("process-check", "--run-id", run_id)["status"], "CLEAN")
@@ -232,7 +232,7 @@ class ProcessRegistryTests(unittest.TestCase):
         self.assertEqual({result["status"] for result in results}, {"SUCCESS"})
         entry_ids = [result["entry_id"] for result in results]
         self.assertEqual(len(set(entry_ids)), 4)
-        run_path = self.project / ".astra-luna" / "processes" / run_id / "run.json"
+        run_path = self.project / ".codex-adaptive-agents" / "processes" / run_id / "run.json"
         run_doc = self._read_json(run_path)
         self.assertEqual(set(run_doc["entry_ids"]), set(entry_ids))
         self.assertEqual(self._invoke("process-check", "--run-id", run_id)["status"], "CLEAN")
@@ -342,7 +342,7 @@ class ProcessRegistryTests(unittest.TestCase):
         run_id = self._init_run()
         result = self._run_command(run_id, [PYTHON, "-I", "-B", "-c", "print('entry')"])
         self.assertEqual(result["status"], "SUCCESS")
-        run_dir = self.project / ".astra-luna" / "processes" / run_id
+        run_dir = self.project / ".codex-adaptive-agents" / "processes" / run_id
         run_doc = self._read_json(run_dir / "run.json")
         self.assertEqual(len(run_doc["entry_ids"]), 1)
         (run_dir / (run_doc["entry_ids"][0] + ".json")).unlink()
@@ -385,11 +385,11 @@ class ProcessRegistryTests(unittest.TestCase):
         result = self._run_command(run_id, [PYTHON, "-I", "-B", "-c", "print('ledger-copy')"])
         self.assertEqual(result["status"], "SUCCESS")
 
-        other_temporary = tempfile.TemporaryDirectory(prefix="astra-luna-process-registry-copy-")
+        other_temporary = tempfile.TemporaryDirectory(prefix="codex-adaptive-agents-process-registry-copy-")
         self.addCleanup(other_temporary.cleanup)
         other = Path(other_temporary.name).resolve()
-        source_dir = self.project / ".astra-luna" / "processes" / run_id
-        copied_dir = other / ".astra-luna" / "processes" / run_id
+        source_dir = self.project / ".codex-adaptive-agents" / "processes" / run_id
+        copied_dir = other / ".codex-adaptive-agents" / "processes" / run_id
         copied_dir.parent.mkdir(parents=True)
         shutil.copytree(source_dir, copied_dir)
 
@@ -412,12 +412,12 @@ class ProcessRegistryTests(unittest.TestCase):
         )
         self.assertEqual(completed["status"], "SUCCESS")
         completed_entry = self._read_json(
-            self.project / ".astra-luna" / "processes" / completed_run
+            self.project / ".codex-adaptive-agents" / "processes" / completed_run
             / (completed["entry_id"] + ".json")
         )
         completed_entry.pop("project", None)
         atomic(
-            self.project / ".astra-luna" / "processes" / completed_run
+            self.project / ".codex-adaptive-agents" / "processes" / completed_run
             / (completed["entry_id"] + ".json"),
             encode(completed_entry),
         )

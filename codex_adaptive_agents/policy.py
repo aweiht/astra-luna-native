@@ -3,7 +3,7 @@
 This module deliberately has no model or authentication integration.  It only
 reads the public capability snapshot, fetches the two public radar documents,
 and keeps a bounded, per-day policy cache.  All subprocesses and file writes go
-through :mod:`astra_luna.platform` so the command remains a Python stdlib
+through :mod:`codex_adaptive_agents.platform` so the command remains a Python stdlib
 runtime on macOS, Linux, and Windows.
 """
 from __future__ import annotations
@@ -27,8 +27,8 @@ from zoneinfo import ZoneInfo
 from . import platform as _platform
 
 
-VERSION = "0.5.0"
-RESOURCE = "astra-luna-native"
+VERSION = "0.6.0"
+RESOURCE = "codex-adaptive-agents"
 MODEL_DIAL_URL = "https://modeldial.com/api/v1/radar/latest.json"
 DENG_URL = "https://api.codexradar.com/api/v1/intelligence-efficiency?v=20260823-trend-cohort-v1"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -679,7 +679,7 @@ def _state(home: Path, project: Path | None) -> Path:
         raise PolicyError("absolute project path required")
     if not project.is_dir() or project.is_symlink():
         raise PolicyError("project must be an existing directory")
-    return project / ".astra-luna" / "state"
+    return project / ".codex-adaptive-agents" / "state"
 
 
 def _snapshot_path(home: Path) -> Path:

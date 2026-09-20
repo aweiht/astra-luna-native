@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from astra_luna import transport
+from codex_adaptive_agents import transport
 
 
 class TransportTests(unittest.TestCase):

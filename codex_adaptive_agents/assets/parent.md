@@ -20,7 +20,7 @@
 {{COMMAND}} select --project {{PROJECT}}
 ```
 
-命令只选择 Luna 档位，不判断当前任务是否值得委派，也不会启动子 Agent。它返回 `adaptive_luna_low`、`adaptive_luna_medium`、`adaptive_luna_high`、`adaptive_luna_xhigh` 或 `adaptive_luna_max` 中的一个，在当前项目 `.astra-luna/state` 按系统本地自然日复用缓存，跨天在下一次委派时刷新，不依赖会话 Hook。普通运行失败不要连续强制刷新；能力快照超过 72 小时且客户端无法刷新时接回任务，用户可从正常终端运行安装入口的 `refresh`。将 `.astra-luna/` 加入项目忽略文件（按项目允许的修改范围执行）。需要解释时可运行相同命令并加 `--explain`，不为简单问题主动运行。
+命令只选择 Luna 档位，不判断当前任务是否值得委派，也不会启动子 Agent。它返回 `adaptive_luna_low`、`adaptive_luna_medium`、`adaptive_luna_high`、`adaptive_luna_xhigh` 或 `adaptive_luna_max` 中的一个，在当前项目 `.codex-adaptive-agents/state` 按系统本地自然日复用缓存，跨天在下一次委派时刷新，不依赖会话 Hook。普通运行失败不要连续强制刷新；能力快照超过 72 小时且客户端无法刷新时接回任务，用户可从正常终端运行安装入口的 `refresh`。将 `.codex-adaptive-agents/` 加入项目忽略文件（按项目允许的修改范围执行）。需要解释时可运行相同命令并加 `--explain`，不为简单问题主动运行。
 
 通过当前可用的原生子 Agent 工具创建返回的角色。因任务风险可以选择更高档位；所有执行仍为 Luna。选择器失败、角色未加载或原生工具不可用时，根据本轮实际返回的错误或已明确的工具能力说明阻塞，主 Agent 接回能完成的工作；未运行选择器、未尝试派发或决定直接完成不证明 Luna 不可用。区分参数/权限、暂时失败与宿主不支持，不把单次调用失败泛化为 Luna 整体不可用。不声称已调用 Luna，不回退到独立 CLI worker、不切换其他付费供应商。用户明确指定其他角色/模型时按用户要求执行。
 

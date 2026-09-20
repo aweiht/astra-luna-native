@@ -224,7 +224,7 @@ def hashes(project):
             raise RuntimeError('fixture link or reparse point rejected')
         if path.is_file():
             relative = path.relative_to(project).as_posix()
-            if relative.startswith('.astra-luna/'):
+            if relative.startswith('.codex-adaptive-agents/'):
                 continue
             found.add(relative)
         elif not path.is_dir():
@@ -237,7 +237,7 @@ def hashes(project):
 def run(home, codex, project, output, role):
     from . import verify
     home, project, output = (Path(x) for x in (home, project, output))
-    entry = Path(__file__).resolve().parents[1] / 'astra-luna.py'
+    entry = Path(__file__).resolve().parents[1] / 'codex-adaptive-agents.py'
     result = dict(status='LIVE_FAILED', version=__version__, project=str(project), evidence=str(output),
                   server_reported_model='unknown', internal_session_or_auth_files_read=False,
                   turn_history_requested=False, test_transport='official transient stdio; no daemon or TCP listener')
@@ -257,7 +257,7 @@ def run(home, codex, project, output, role):
         output.mkdir(parents=True, mode=0o700)
         project.mkdir(parents=True, exist_ok=True, mode=0o700)
         prepared = True
-        assets = entry.parent / 'astra_luna/assets'
+        assets = entry.parent / 'codex_adaptive_agents/assets'
         for name in ('contract.md','normalize_tags.py','unique_numbers.py'):
             atomic(project/name, read(assets/name))
         atomic(project/'AGENTS.md', read(assets/'contract.md'))
@@ -284,7 +284,7 @@ def run(home, codex, project, output, role):
         result['initial_stubs_failed']=True
         config=tomllib.loads((read(home/'config.toml') or b'').decode('utf-8'))
         session=Session(codex,project,env,config,deadline)
-        session.call('initialize',{'clientInfo':{'name':'astra_luna_native_verify','version':__version__},'capabilities':{'experimentalApi':True}})
+        session.call('initialize',{'clientInfo':{'name':'codex_adaptive_agents_verify','version':__version__},'capabilities':{'experimentalApi':True}})
         session.send({'method':'initialized','params':{}})
         root=session.call('thread/start',{'cwd':str(project),'ephemeral':True,'model':'gpt-6-astra','modelProvider':'openai',
              'sandbox':'workspace-write','approvalPolicy':'never','allowProviderModelFallback':False,'experimentalRawEvents':False,

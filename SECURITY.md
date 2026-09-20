@@ -11,7 +11,7 @@ verification evidence in a report. Include the release version, operating
 system and architecture, the exact command, a minimal redacted reproduction,
 and the observed impact.
 
-The 0.5.0 runtime is a Python 3.11+ standard-library program. It invokes the
+The 0.6.0 runtime is a Python 3.11+ standard-library program. It invokes the
 official Codex CLI only when a command requires it and does not provide a
 daemon, MCP server, lifecycle Hook, background scheduler, provider switch, or
 independent service. The installer limits writes to the selected Codex home

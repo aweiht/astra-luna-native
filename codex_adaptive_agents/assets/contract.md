@@ -25,6 +25,6 @@ official workspace sandbox:
 
 Only normalize_tags.py and unique_numbers.py may change.  AGENTS.md and
 contract.md are immutable.  Do not create tests, reports, helper files or
-caches outside .astra-luna, and do not use network requests, Go, or synthetic
+caches outside .codex-adaptive-agents, and do not use network requests, Go, or synthetic
 waits.  The verifier does not read session stores, authentication files,
 messages, reasoning, or raw command output.

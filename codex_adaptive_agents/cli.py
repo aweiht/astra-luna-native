@@ -246,7 +246,7 @@ def main(argv=None):
             if args.project:
                 project = Path(os.path.abspath(args.project))
             else:
-                project = Path(tempfile.mkdtemp(prefix='astra-luna-verify-')).resolve() / 'project'
+                project = Path(tempfile.mkdtemp(prefix='codex-adaptive-agents-verify-')).resolve() / 'project'
             output = Path(os.path.abspath(args.output)) if args.output else project.parent / ('verification-' + str(time.time_ns()))
             role = policy.select(home)['role']
             if role not in ('adaptive_luna_' + e for e in install.EFFORTS):

@@ -7,8 +7,8 @@ import tomllib
 import unittest
 from unittest.mock import patch
 
-from astra_luna import install as i
-from astra_luna.platform import encode, read
+from codex_adaptive_agents import install as i
+from codex_adaptive_agents.platform import encode, read
 
 
 class InstallTests(unittest.TestCase):
@@ -38,7 +38,7 @@ class InstallTests(unittest.TestCase):
         self.apply()
         receipt = i.validate(self.home)
         self.assertEqual(receipt['schema'], 4)
-        self.assertEqual(set(receipt['owned_files']), i.legacy(4))
+        self.assertEqual(set(receipt['owned_files']), i.owned_paths())
         self.assertEqual(i.build(self.home)[2]['config_changes'], [])
         undo = i.build(self.home, True)[2]['config_changes']
         self.assertEqual(next(row for row in undo if row['key'] == 'model')['after'], '"gpt-5.6-sol"')
@@ -68,48 +68,55 @@ class InstallTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'changed'):
             i.build(self.home, True)
 
-    def test_040_to_050_upgrade_accepts_unchanged_defaults(self):
-        home = self.base / 'upgrade-040-home'
+    def test_current_to_future_upgrade_accepts_unchanged_defaults(self):
+        home = self.base / 'upgrade-future-home'
         home.mkdir()
         (home / 'config.toml').write_bytes(
             b'model = "gpt-6-astra"\n[agents]\n'
             b'default_subagent_model = "gpt-5.6-luna"\nmax_threads = 5\n')
         (home / 'AGENTS.md').write_bytes(b'old instructions\n')
-        with patch.object(i, '__version__', '0.4.0'):
+        with patch.object(i, '__version__', '0.6.0'):
             _, _, plan = i.build(home)
             i.apply(home, plan['plan_id'])
         old_receipt = json.loads((home / i.RESOURCE / 'install-manifest.json').read_bytes())
-        self.assertEqual(old_receipt['version'], '0.4.0')
+        self.assertEqual(old_receipt['version'], '0.6.0')
         self.assertNotIn('model', {row['key'] for row in old_receipt['config_changes']})
 
-        with patch.object(i, '__version__', '0.5.0'):
+        future = dict(i.VERSION_PROFILES['0.6.0'])
+        with patch.dict(i.VERSION_PROFILES, {'0.7.0': future}), \
+                patch.object(i, '__version__', '0.7.0'):
             _, _, upgrade = i.build(home)
             self.assertEqual(upgrade['config_changes'], [])
             self.assertEqual(i.apply(home, upgrade['plan_id'])['status'], 'INSTALLED')
             receipt = i.validate(home)
-        self.assertEqual(receipt['version'], '0.5.0')
+        self.assertEqual(receipt['version'], '0.7.0')
         self.assertNotIn('model', {row['key'] for row in receipt['config_changes']})
 
     def test_unknown_illegal_version_and_downgrade_refuse(self):
-        with patch.object(i, '__version__', '0.5.0'):
+        with patch.object(i, '__version__', '0.6.0'):
             self.apply()
         manifest = self.home / i.RESOURCE / 'install-manifest.json'
         original = json.loads(manifest.read_bytes())
-        for version in ('0.6.0', 'not-a-version'):
+        for version in ('0.7.0', '0.5.0', 'not-a-version'):
             with self.subTest(version=version):
                 mutated = dict(original, version=version)
                 manifest.write_bytes(encode(mutated))
                 with self.assertRaisesRegex(ValueError, 'unsupported installation version'):
                     i.load(self.home)
-        # A version on a schema-1/2 receipt is itself unsupported; old schemas
-        # are accepted only through their known version-less source profile.
-        manifest.write_bytes(encode(dict(original, schema=2, version='0.3.0')))
-        with self.assertRaisesRegex(ValueError, 'unsupported installation version'):
-            i.load(self.home)
+        for schema in (1, 2, 3):
+            with self.subTest(schema=schema):
+                manifest.write_bytes(encode(dict(original, schema=schema)))
+                with self.assertRaisesRegex(ValueError, 'invalid installation receipt'):
+                    i.load(self.home)
         manifest.write_bytes(encode(original))
-        with patch.object(i, '__version__', '0.4.0'):
-            with self.assertRaisesRegex(ValueError, 'downgrade'):
-                i.build(self.home)
+        future = dict(i.VERSION_PROFILES['0.6.0'])
+        with patch.dict(i.VERSION_PROFILES, {'0.7.0': future}):
+            with patch.object(i, '__version__', '0.7.0'):
+                _, _, upgrade = i.build(self.home)
+                i.apply(self.home, upgrade['plan_id'])
+            with patch.object(i, '__version__', '0.6.0'):
+                with self.assertRaisesRegex(ValueError, 'downgrade'):
+                    i.build(self.home)
 
     def test_incomplete_managed_keys_reject_before_upgrade_writes(self):
         self.apply()
@@ -123,43 +130,6 @@ class InstallTests(unittest.TestCase):
             i.build(self.home)
         self.assertEqual(config.read_bytes(), before)
 
-    def test_schema1_and_schema2_receipts_without_version_upgrade(self):
-        for schema in (1, 2):
-            with self.subTest(schema=schema):
-                home = self.base / f'legacy-schema-{schema}'
-                home.mkdir()
-                (home / 'config.toml').write_bytes(b'model = "gpt-6-astra"\n')
-                (home / 'AGENTS.md').write_bytes(b'old instructions\n')
-                with patch.object(i, '__version__', '0.4.0'):
-                    _, _, plan = i.build(home)
-                    i.apply(home, plan['plan_id'])
-                manifest = home / i.RESOURCE / 'install-manifest.json'
-                receipt = json.loads(manifest.read_bytes())
-                owned = {}
-                for relative in i.legacy(schema):
-                    path = home / relative
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    if not path.exists():
-                        path.write_bytes(b'legacy receipt fixture\n')
-                    owned[relative] = i.sha(path.read_bytes())
-                # A real schema-1/2 installation predates these Python
-                # runtime destinations.  Remove the newer fixture payloads
-                # so the upgrade can create them as owned files.
-                for relative in i.RUNTIME_FILES:
-                    path = home / i.RESOURCE / 'runtime' / relative
-                    if path.exists() and i.RESOURCE + '/runtime/' + relative not in owned:
-                        path.unlink()
-                receipt.update(schema=schema, owned_files=owned)
-                receipt.pop('version', None)
-                receipt.pop('managed_keys', None)
-                for key in i.RECEIPT_METADATA:
-                    receipt.pop(key, None)
-                manifest.write_bytes(encode(receipt))
-                with patch.object(i, '__version__', '0.5.0'):
-                    _, _, upgrade = i.build(home)
-                    self.assertEqual(i.apply(home, upgrade['plan_id'])['status'], 'INSTALLED')
-                    self.assertEqual(i.validate(home)['schema'], 4)
-
     def test_approved_future_profile_composes_original_values(self):
         home = self.base / 'future-profile-home'
         home.mkdir()
@@ -167,14 +137,14 @@ class InstallTests(unittest.TestCase):
                     b'default_subagent_model = "gpt-5.6-sol"\nmax_threads = 5\n')
         (home / 'config.toml').write_bytes(original)
         (home / 'AGENTS.md').write_bytes(b'old instructions\n')
-        with patch.object(i, '__version__', '0.5.0'):
+        with patch.object(i, '__version__', '0.6.0'):
             _, _, plan = i.build(home)
             i.apply(home, plan['plan_id'])
-        future = dict(i.VERSION_PROFILES['0.5.0'])
+        future = dict(i.VERSION_PROFILES['0.6.0'])
         future['model'] = '"synthetic-future-root"'
         future['agents.default_subagent_model'] = '"synthetic-future-leaf"'
-        with patch.dict(i.VERSION_PROFILES, {'0.6.0': future}), \
-                patch.object(i, '__version__', '0.6.0'):
+        with patch.dict(i.VERSION_PROFILES, {'0.7.0': future}), \
+                patch.object(i, '__version__', '0.7.0'):
             _, _, upgrade = i.build(home)
             delta = {row['key']: row for row in upgrade['config_changes']}
             self.assertEqual(delta['model']['before'], '"gpt-6-astra"')
@@ -210,64 +180,64 @@ class InstallTests(unittest.TestCase):
         home.mkdir()
         (home / 'config.toml').write_bytes(b'model = "gpt-6-astra"\n')
         (home / 'AGENTS.md').write_bytes(b'old instructions\n')
-        with patch.object(i, '__version__', '0.5.0'):
+        with patch.object(i, '__version__', '0.6.0'):
             _, _, plan = i.build(home)
             i.apply(home, plan['plan_id'])
-        future = dict(i.VERSION_PROFILES['0.5.0'])
+        future = dict(i.VERSION_PROFILES['0.6.0'])
         future['model'] = '"synthetic-rollback-root"'
-        with patch.dict(i.VERSION_PROFILES, {'0.6.0': future}), \
-                patch.object(i, '__version__', '0.6.0'):
+        with patch.dict(i.VERSION_PROFILES, {'0.7.0': future}), \
+                patch.object(i, '__version__', '0.7.0'):
             _, _, upgrade = i.build(home)
             result = i.apply(home, upgrade['plan_id'])
             self.assertEqual(i.build(home)[2]['files'], [])
             self.assertEqual(i.apply(home, i.build(home)[2]['plan_id'])['status'],
                              'IDEMPOTENT_PASS')
             self.assertEqual(i.recover(home, result['backup'])['status'], 'ROLLBACK_EXACT_PASS')
-            self.assertEqual(i.validate(home)['version'], '0.5.0')
+            self.assertEqual(i.validate(home)['version'], '0.6.0')
             _, _, repeat = i.build(home)
             self.assertEqual(repeat['config_changes'][0]['after'], '"synthetic-rollback-root"')
             self.assertEqual(i.apply(home, repeat['plan_id'])['status'], 'INSTALLED')
-            self.assertEqual(i.validate(home)['version'], '0.6.0')
+            self.assertEqual(i.validate(home)['version'], '0.7.0')
 
-    def test_old_receipt_without_ownership_metadata_upgrades_conservatively(self):
-        home = self.base / 'old-metadata-upgrade-home'
+    def test_future_upgrade_preserves_ownership_metadata(self):
+        home = self.base / 'future-metadata-upgrade-home'
         home.mkdir()
         original = b'model = "gpt-6-astra"\n'
         (home / 'config.toml').write_bytes(original)
         (home / 'AGENTS.md').write_bytes(b'old instructions\n')
-        with patch.object(i, '__version__', '0.4.0'):
+        with patch.object(i, '__version__', '0.6.0'):
             _, _, plan = i.build(home)
             i.apply(home, plan['plan_id'])
         manifest = home / i.RESOURCE / 'install-manifest.json'
-        receipt = json.loads(manifest.read_bytes())
-        for key in i.RECEIPT_METADATA:
-            receipt.pop(key, None)
-        manifest.write_bytes(encode(receipt))
-        with patch.object(i, '__version__', '0.5.0'):
+        before = json.loads(manifest.read_bytes())
+        future = dict(i.VERSION_PROFILES['0.6.0'])
+        future['model'] = '"synthetic-metadata-root"'
+        with patch.dict(i.VERSION_PROFILES, {'0.7.0': future}), \
+                patch.object(i, '__version__', '0.7.0'):
             _, _, upgrade = i.build(home)
-            i.apply(home, upgrade['plan_id'])
-            self.assertFalse(any(key in i.validate(home) for key in i.RECEIPT_METADATA))
+            self.assertEqual(i.apply(home, upgrade['plan_id'])['status'], 'INSTALLED')
+            receipt = i.validate(home)
+        for key in i.RECEIPT_METADATA:
+            self.assertIn(key, receipt)
+        for key in ('config_existed', 'agents_existed', 'created_config_tables'):
+            self.assertEqual(receipt[key], before[key])
+        with patch.dict(i.VERSION_PROFILES, {'0.7.0': future}), \
+                patch.object(i, '__version__', '0.7.0'):
             _, _, uninstall = i.build(home, uninstall=True)
             i.apply(home, uninstall['plan_id'], uninstall=True)
-        self.assertEqual((home / 'config.toml').read_bytes(), original + b'\n[agents]\n')
+        self.assertEqual((home / 'config.toml').read_bytes(), original)
 
-    def test_legacy_receipt_uninstall_preserves_later_provider_edit(self):
-        home = self.base / 'legacy-provider-edit-home'
+    def test_uninstall_preserves_later_provider_edit(self):
+        home = self.base / 'provider-edit-home'
         home.mkdir()
         (home / 'config.toml').write_bytes(b'model = "gpt-5.6-sol"\n')
         (home / 'AGENTS.md').write_bytes(b'old instructions\n')
-        with patch.object(i, '__version__', '0.4.0'):
+        with patch.object(i, '__version__', '0.6.0'):
             _, _, plan = i.build(home)
             i.apply(home, plan['plan_id'])
-        manifest = home / i.RESOURCE / 'install-manifest.json'
-        receipt = json.loads(manifest.read_bytes())
-        receipt.pop('managed_keys', None)
-        for key in i.RECEIPT_METADATA:
-            receipt.pop(key, None)
-        manifest.write_bytes(encode(receipt))
         config = home / 'config.toml'
         config.write_bytes(b'model_provider = "custom"\n' + config.read_bytes())
-        with patch.object(i, '__version__', '0.5.0'):
+        with patch.object(i, '__version__', '0.6.0'):
             _, _, uninstall = i.build(home, uninstall=True)
             self.assertEqual(i.apply(home, uninstall['plan_id'], uninstall=True)['status'],
                              'UNINSTALLED')
@@ -284,75 +254,6 @@ class InstallTests(unittest.TestCase):
             stream.write(b'# changed later\n')
         with self.assertRaisesRegex(ValueError, 'preserved'):
             i.recover(self.home, result['backup'])
-
-    def test_upgrade_schema3_preserves_legacy_runtime(self):
-        self.apply()
-        receipt_path = self.home / i.RESOURCE / 'install-manifest.json'
-        receipt = json.loads(receipt_path.read_bytes())
-        # Synthetic prior receipt uses exact valid Go schema3 paths.
-        old = self.home / i.RESOURCE / 'runtime/astra-luna'
-        old.write_bytes(b'old-runtime-preserved')
-        receipt.update(schema=3, version='0.3.0')
-        receipt['owned_files'][i.RESOURCE + '/runtime/astra-luna'] = i.sha(old.read_bytes())
-        receipt_path.write_bytes(encode(receipt))
-        self.apply()
-        self.assertEqual(i.validate(self.home)['schema'], 4)
-        self.assertEqual(old.read_bytes(), b'old-runtime-preserved')
-
-    def test_prior_schema4_receipt_upgrades_new_runtime_and_uninstalls(self):
-        for prior_runtime in (i.PREVIOUS_SCHEMA4_RUNTIME,
-                              i.PREVIOUS_SCHEMA4_RUNTIME + ('astra_luna/process_tree.py',)):
-            with self.subTest(prior_runtime=prior_runtime):
-                self._prior_schema4_upgrade(prior_runtime)
-
-    def _prior_schema4_upgrade(self, prior_runtime):
-        home = self.base / ('prior-schema4-home-' + str(len(prior_runtime)))
-        home.mkdir()
-        (home / 'config.toml').write_bytes(b'model="old"\n')
-        (home / 'AGENTS.md').write_bytes(b'user instructions\n')
-        with patch.object(i, 'ROOT', self.source), \
-                patch.object(i, 'RUNTIME_FILES', prior_runtime):
-            _, _, plan = i.build(home)
-            installed = i.apply(home, plan['plan_id'])
-        self.assertEqual(installed['status'], 'INSTALLED')
-        process_tree = home / i.RESOURCE / 'runtime/astra_luna/process_tree.py'
-        registry = home / i.RESOURCE / 'runtime/astra_luna/process_registry.py'
-        self.assertEqual(process_tree.exists(), 'astra_luna/process_tree.py' in prior_runtime)
-        self.assertFalse(registry.exists())
-        with patch.object(i, 'ROOT', self.source):
-            _, _, upgrade = i.build(home)
-            self.assertIn(i.RESOURCE + '/runtime/astra_luna/process_registry.py',
-                          [row['path'] for row in upgrade['files']])
-            self.assertEqual(i.apply(home, upgrade['plan_id'])['status'], 'INSTALLED')
-            self.assertTrue(process_tree.is_file())
-            self.assertTrue(registry.is_file())
-            self.assertEqual(i.build(home)[2]['files'], [])
-            _, _, uninstall = i.build(home, uninstall=True)
-            self.assertEqual(i.apply(home, uninstall['plan_id'], uninstall=True)['status'], 'UNINSTALLED')
-        self.assertFalse(process_tree.exists())
-        self.assertFalse(registry.exists())
-
-    def test_prior_schema4_receipt_rejects_missing_or_unknown_runtime_paths(self):
-        home = self.base / 'invalid-prior-schema4-home'
-        home.mkdir()
-        (home / 'config.toml').write_bytes(b'model="old"\n')
-        (home / 'AGENTS.md').write_bytes(b'user instructions\n')
-        with patch.object(i, 'ROOT', self.source), \
-                patch.object(i, 'RUNTIME_FILES', i.PREVIOUS_SCHEMA4_RUNTIME):
-            _, _, plan = i.build(home)
-            i.apply(home, plan['plan_id'])
-        receipt_path = home / i.RESOURCE / 'install-manifest.json'
-        original = json.loads(receipt_path.read_bytes())
-        missing = json.loads(json.dumps(original))
-        missing['owned_files'].pop(i.RESOURCE + '/runtime/astra_luna/transport.py')
-        receipt_path.write_bytes(encode(missing))
-        with self.assertRaisesRegex(ValueError, 'invalid receipt paths'):
-            i.load(home)
-        unknown = json.loads(json.dumps(original))
-        unknown['owned_files'][i.RESOURCE + '/runtime/not-a-runtime.py'] = i.sha(b'unknown')
-        receipt_path.write_bytes(encode(unknown))
-        with self.assertRaisesRegex(ValueError, 'invalid receipt paths'):
-            i.load(home)
 
     def test_case_variant_alias_supports_validation_upgrade_uninstall_and_recovery(self):
         home = self.base / 'CaseHome'
@@ -371,16 +272,6 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(rollback['status'], 'ROLLBACK_EXACT_PASS')
             _, _, reinstall = i.build(alias)
             i.apply(alias, reinstall['plan_id'])
-            receipt_path = home / i.RESOURCE / 'install-manifest.json'
-            receipt = json.loads(receipt_path.read_bytes())
-            old = home / i.RESOURCE / 'runtime/astra-luna'
-            old.write_bytes(b'old-runtime-preserved')
-            receipt.update(schema=3, version='0.3.0', codex_home=str(home))
-            receipt['owned_files'][i.RESOURCE + '/runtime/astra-luna'] = i.sha(old.read_bytes())
-            receipt_path.write_bytes(encode(receipt))
-            _, _, upgrade = i.build(alias)
-            i.apply(alias, upgrade['plan_id'])
-            self.assertEqual(i.validate(alias)['schema'], 4)
             _, _, uninstall = i.build(alias, uninstall=True)
             result = i.apply(alias, uninstall['plan_id'], uninstall=True)
         self.assertEqual(result['status'], 'UNINSTALLED')
@@ -483,23 +374,18 @@ class InstallTests(unittest.TestCase):
         self.assertIn(b'# user note\ncustom = true\n', config)
         self.assertEqual((home / 'AGENTS.md').read_bytes(), b'User addition\n')
 
-    def test_old_receipt_never_guesses_file_or_table_ownership(self):
-        home = self.base / 'old-receipt-home'
-        home.mkdir()
-        _, _, plan = i.build(home)
-        i.apply(home, plan['plan_id'])
-        manifest = home / i.RESOURCE / 'install-manifest.json'
-        receipt = json.loads(manifest.read_bytes())
-        for key in i.RECEIPT_METADATA:
-            receipt.pop(key, None)
-        manifest.write_bytes(encode(receipt))
-
-        _, _, uninstall = i.build(home, uninstall=True)
-        i.apply(home, uninstall['plan_id'], uninstall=True)
-        self.assertTrue((home / 'config.toml').exists())
-        self.assertEqual((home / 'config.toml').read_bytes(), b'\n[agents]\n')
-        self.assertTrue((home / 'AGENTS.md').exists())
-        self.assertEqual((home / 'AGENTS.md').read_bytes(), b'')
+    def test_receipt_requires_current_managed_and_ownership_metadata(self):
+        self.apply()
+        manifest = self.home / i.RESOURCE / 'install-manifest.json'
+        original = json.loads(manifest.read_bytes())
+        for key in ('managed_keys', 'created_config_tables'):
+            with self.subTest(key=key):
+                mutated = dict(original)
+                mutated.pop(key)
+                manifest.write_bytes(encode(mutated))
+                with self.assertRaisesRegex(ValueError, 'invalid'):
+                    i.load(self.home)
+                manifest.write_bytes(encode(original))
 
     def test_committed_recover_without_backup_is_read_only_but_explicit_rollback_works(self):
         result = self.apply()

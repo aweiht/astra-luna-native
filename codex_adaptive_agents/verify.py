@@ -402,7 +402,7 @@ def _scope_files(project: Path) -> tuple[list[str], list[str]]:
             continue
         if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
             errors.append("unsafe project path: " + rel)
-        elif rel == ".astra-luna" and stat.S_ISDIR(info.st_mode):
+        elif rel == ".codex-adaptive-agents" and stat.S_ISDIR(info.st_mode):
             # The client may maintain project-local state here.  It is never
             # read by this verifier and is the only ignored subtree.
             continue
@@ -494,7 +494,7 @@ def check(project: Path) -> dict[str, Any]:
         "ok": False,
         "contract": "embedded-v1",
         "network": False,
-        "trusted_validator": "installed astra_luna.verify",
+        "trusted_validator": "installed codex_adaptive_agents.verify",
     }
     try:
         root = _absolute_path(project)

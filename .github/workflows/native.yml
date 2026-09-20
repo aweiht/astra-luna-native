@@ -42,9 +42,9 @@ jobs:
         run: >-
           python -c "from pathlib import Path; import zipfile;
           out=Path('release-ci');
-          archives=list(out.glob('codex-adaptive-agents-0.5.0-python.zip'));
+          archives=list(out.glob('codex-adaptive-agents-0.6.0-python.zip'));
           assert len(archives)==1 and (out/'SHA256SUMS').is_file();
           names=zipfile.ZipFile(archives[0]).namelist();
-          root='codex-adaptive-agents-0.5.0-python/';
-          assert root+'astra-luna.py' in names and root+'SHA256SUMS' in names;
+          root='codex-adaptive-agents-0.6.0-python/';
+          assert root+'codex-adaptive-agents.py' in names and root+'SHA256SUMS' in names;
           assert all('__pycache__' not in n and not n.endswith('.pyc') for n in names)"

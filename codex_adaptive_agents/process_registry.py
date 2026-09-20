@@ -1,7 +1,7 @@
 """Persistent, identity-checked process handoff records.
 
 The registry is deliberately cooperative.  ``run_process`` records the
-process-tree supervisor returned by :mod:`astra_luna.platform`, while
+process-tree supervisor returned by :mod:`codex_adaptive_agents.platform`, while
 ``check_run`` and ``cleanup_run`` independently re-read operating-system
 identity before treating a PID as belonging to this run.  A ledger is an
 observation aid and a recovery boundary; it is not a sandbox for hostile
@@ -192,7 +192,7 @@ def _text(value: object, name: str) -> str:
 
 
 def _root(project: Path) -> Path:
-    return project / ".astra-luna" / PROCESS_ROOT
+    return project / ".codex-adaptive-agents" / PROCESS_ROOT
 
 
 def _run_dir(project: Path, run_id: str) -> Path:

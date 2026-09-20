@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run with Python 3.11+: python3 astra-luna.py --help."""
+"""Run with Python 3.11+: python3 codex-adaptive-agents.py --help."""
 import sys
 from pathlib import Path
 
@@ -14,5 +14,5 @@ if __name__ == "__main__":
     # Also support the verifier's isolated interpreter (-I): import only the
     # package beside this trusted entry, never the generated project directory.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from astra_luna.cli import main
+    from codex_adaptive_agents.cli import main
     raise SystemExit(main())

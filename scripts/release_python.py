@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and verify the public 0.5.0 Python source/runtime ZIP.
+"""Build and verify the public 0.6.0 Python source/runtime ZIP.
 
 The builder deliberately works from an explicit manifest. It never walks the
 repository as an implicit release allowlist, follows links, or replaces an
@@ -27,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VERSION_FILE = PROJECT_ROOT / "VERSION"
 MANIFEST_FILE = PROJECT_ROOT / "release-manifest.json"
 CHECKSUMS_NAME = "SHA256SUMS"
-EXPECTED_VERSION = "0.5.0"
+EXPECTED_VERSION = "0.6.0"
 PRIVATE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_])/(?:Users|Volumes|private/var|home)/[^\s<>)\"']+"
 )
@@ -183,8 +183,8 @@ def load_manifest() -> dict[str, Any]:
         raise ReleaseError("manifest must declare Apache-2.0")
     if manifest["archive_format"] != "zip" or manifest["source_equals_runtime"] is not True:
         raise ReleaseError("manifest must describe a source-equals-runtime ZIP")
-    if manifest.get("entrypoint") != "astra-luna.py":
-        raise ReleaseError("manifest entrypoint must be astra-luna.py")
+    if manifest.get("entrypoint") != "codex-adaptive-agents.py":
+        raise ReleaseError("manifest entrypoint must be codex-adaptive-agents.py")
     if not isinstance(manifest["archive_root_pattern"], str):
         raise ReleaseError("archive_root_pattern must be a string")
     if "{version}" not in manifest["archive_root_pattern"] or "{target}" not in manifest["archive_root_pattern"]:
@@ -215,7 +215,7 @@ def load_manifest() -> dict[str, Any]:
             raise ReleaseError(f"invalid excluded path: {value!r}")
     runtime = manifest["runtime"]
     if (not isinstance(runtime, dict) or runtime.get("same_as") != "source"
-            or runtime.get("entrypoint") != "astra-luna.py"):
+            or runtime.get("entrypoint") != "codex-adaptive-agents.py"):
         raise ReleaseError("runtime must explicitly equal source")
     checksums = manifest["checksums"]
     if not isinstance(checksums, dict) or checksums.get("package_file") != CHECKSUMS_NAME:
@@ -386,7 +386,7 @@ def _check_markdown_links(path: Path, root: Path, text: str) -> None:
             continue
         if target.startswith("file:") or target.startswith(("/", "\\")):
             raise ReleaseError(f"private or absolute Markdown link in {path}: {target}")
-        if any(marker in target for marker in (".orchestrator-dev", ".reference", ".astra-luna")):
+        if any(marker in target for marker in (".orchestrator-dev", ".reference", ".codex-adaptive-agents")):
             raise ReleaseError(f"private Markdown link in {path}: {target}")
         parsed = urlsplit(target)
         if parsed.scheme or parsed.netloc:
@@ -564,7 +564,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=PROJECT_ROOT / "dist" / "0.5.0-python",
+        default=PROJECT_ROOT / "dist" / "0.6.0-python",
         help="directory for the new ZIP and external SHA256SUMS",
     )
     return parser.parse_args(argv)
