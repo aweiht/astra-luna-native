@@ -1,6 +1,6 @@
-# Implementation and dependencies
+# Codex Adaptive Agents implementation and dependencies
 
-Astra / Luna Native contains its own installer, policy selector, managed
+Codex Adaptive Agents contains its own installer, policy selector, managed
 instructions, and verification implementation. It does not install, import,
 or execute another agent-orchestration project. The public source package is
 built from the explicit file list in [release-manifest.json](../release-manifest.json).

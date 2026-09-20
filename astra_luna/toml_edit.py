@@ -151,8 +151,43 @@ def set_value(raw,key,literal):
   raise ValueError('managed table cannot be safely extended')
  return raw+('' if raw.endswith('\n') or not raw else '\n')+'\n['+parent+']\n'+leaf+' = '+literal+'\n'
 
+def remove_created_tables(raw,tables):
+ """Remove only installer-created, still-empty ordinary tables.
+
+ The merge path records the exact LF separator it added before a new table.
+ Keep a changed header, comment, value, or unrelated section untouched; old
+ receipts without this metadata therefore remain conservative by design.
+ """
+ if not tables:return raw
+ separators={}
+ for row in tables:
+  if not isinstance(row,dict):raise ValueError('invalid created table receipt')
+  name=row.get('name');separator=row.get('separator')
+  if (name not in ('agents','features') or name in separators or
+      type(separator) is not int or separator not in (1,2)):
+   raise ValueError('invalid created table receipt')
+  separators[name]=separator
+ rows=list(statements(raw));spans=[]
+ for index,(start,end,s) in enumerate(rows):
+  line=s.lstrip()
+  if not line.startswith('[') or line.startswith('[['):continue
+  try:section=path_of(parsed(s+'\n__orchestrator_marker__=1\n'))[:-1]
+  except Exception:continue
+  if len(section)!=1 or section[0] not in separators or s.strip('\r\n')!='['+section[0]+']':continue
+  next_start=len(raw)
+  for next_start_candidate,_,next_statement in rows[index+1:]:
+   if next_statement.lstrip().startswith('['):
+    next_start=next_start_candidate;break
+  if raw[end:next_start].strip():continue
+  separator=separators[section[0]]
+  cut=start-separator
+  if cut<0 or raw[cut:start]!='\n'*separator:continue
+  spans.append((cut,end))
+ for start,end in reversed(spans):raw=raw[:start]+raw[end:]
+ return raw
+
 def run(req):
- raw=req['input'];obj=parsed(raw);locations=managed_locations(raw);changes=[];conflicts=[]
+ raw=req['input'];obj=parsed(raw);locations=managed_locations(raw);changes=[];conflicts=[];created_tables=[]
  if req['mode']=='merge':
   for key,value in sorted(req['desired'].items()):
    if key not in MANAGED:raise ValueError('unmanaged key')
@@ -163,6 +198,10 @@ def run(req):
    if current is not None and type(current) is not TYPES[key]:raise ValueError('wrong managed scalar type')
    if current==actual:continue
    before=locations[key][4] if key in locations else None
+   if '.' in key:
+    parent=key.split('.',1)[0]
+    if parent not in obj and parent not in {row['name'] for row in created_tables}:
+     created_tables.append({'name':parent,'separator':1 if not raw or raw.endswith('\n') else 2})
    raw=set_value(raw,key,value);parsed(raw)
    changes.append({'key':key,'before':before,'after':value})
  else:
@@ -174,7 +213,7 @@ def run(req):
    if type(current) is not type(expected) or current!=expected:conflicts.append(key);continue
    try:raw=set_value(raw,key,ch['before']);parsed(raw)
    except ValueError:conflicts.append(key)
- parsed(raw);return {'output':raw,'changes':changes,'conflicts':conflicts}
+ parsed(raw);return {'output':raw,'changes':changes,'conflicts':conflicts,'created_tables':created_tables}
 if __name__ == '__main__':
  try:
   req=json.load(sys.stdin);result=run(req);json.dump(result,sys.stdout)

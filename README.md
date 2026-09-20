@@ -1,8 +1,8 @@
-# Astra / Luna Native 0.4.0
+# Codex Adaptive Agents 0.5.0
 
 [简体中文](README.zh-CN.md)
 
-Astra / Luna Native is a small Python runtime and installer for the official
+Codex Adaptive Agents is a small Python runtime and installer for the official
 Codex CLI. It lets the Astra root agent choose a bounded Luna role when a task
 is worth delegating, while the official Codex client keeps ownership of login,
 provider access, and model execution.
@@ -10,6 +10,12 @@ provider access, and model execution.
 Installation, policy selection, and verification are implemented in this
 repository. No other agent-orchestration project is required. See the
 [implementation and dependency details](docs/UPSTREAM.md).
+
+Existing installations still use compatibility identifiers such as
+`astra-luna.py`, `astra_luna`, `astra-luna-native`, `ASTRA_LUNA_NATIVE`, and
+`adaptive_luna_*`. They intentionally remain unchanged so this release can
+upgrade an existing installation in place and reuse its trusted receipt; they
+are implementation identifiers, not the product name.
 
 After installation, continue to describe work in ordinary Codex tasks. Astra
 plans and reviews the work, using 0–5 native Luna children when there are useful
@@ -19,8 +25,9 @@ it has no separate chat window and installs no background service or MCP server.
 ## Easiest setup: copy these prompts into Codex
 
 Use a Codex client that can access your local files and run commands. Ask it to
-install the project, then open a new task to verify the installation. Manual
-commands are also included below.
+install the project, then open a new task to verify the installation; use the
+third prompt when an existing installation needs an upgrade. Manual commands
+are also included below.
 
 ### Step 1: ask Codex to install
 
@@ -28,17 +35,14 @@ This sets the managed Astra Max root defaults, Luna Max child defaults, five
 roles, and project instructions while preserving unrelated configuration.
 
 ```text
-Please install Astra / Luna Native for me:
-https://github.com/aweiht/astra-luna-native
+Install Codex Adaptive Agents for me from its project repository:
+https://github.com/aweiht/codex-adaptive-agents
+The previous public title was Astra / Luna Native and the previous repository name was astra-luna-native; use those only to recognize an existing checkout or installation.
 
-Clone or reuse a separate checkout, preserve existing edits, read README.md, and carry out the installation.
-Check Python 3.11+, the official Codex CLI, and the required model catalogue. Use this Codex client's CODEX_HOME.
-Run the commands below through the checkout's astra-luna.py entry, using python3 on macOS/Linux or py -3 on Windows.
-I authorize this project's managed configuration, five Luna roles, instructions, and runtime, preserving other settings and backups.
-Run install --dry-run, review its scope yourself, then apply install --yes --plan-id <plan_id> using the returned plan_id.
-Run doctor; if only the capability snapshot or policy cache is stale, run refresh and check once more.
-Actually complete the installation. If dependencies, login, permissions, or conflicts need my attention, explain the specific blocker.
-Report the result and installation directory, then remind me to reopen Codex and start a new task for verification. Do not run verify --live in this step.
+Preserve existing edits. Read the repository README.md, use this Codex client's existing CODEX_HOME, and run the checkout's exact astra-luna.py entry with Python 3.11+ (`python3 astra-luna.py` on macOS/Linux or `py -3 .\astra-luna.py` on Windows).
+Install the managed Codex Adaptive Agents runtime, five adaptive_luna_* roles, and instructions while preserving unrelated settings, roles, backups, and files.
+Run `install --dry-run`, review the plan, then apply exactly the returned plan with `install --yes --plan-id <plan_id>`. Run `doctor`; refresh only if its capability snapshot or policy cache is stale, then check doctor once more.
+Complete the installation and report the source path, CODEX_HOME, plan result, and doctor status. Accept success only when installation completes and doctor is READY or READY_FALLBACK. Do not run verify --live or any model task in this step. Explain any dependency, login, permission, or conflict that needs attention.
 ```
 
 ### Step 2: open a new Codex task and verify
@@ -48,15 +52,31 @@ extra model test. `READY` or `READY_FALLBACK` plus a successful selection means
 the local installation check passed.
 
 ```text
-Please verify my Astra / Luna Native installation:
-https://github.com/aweiht/astra-luna-native
+Verify my Codex Adaptive Agents installation:
+https://github.com/aweiht/codex-adaptive-agents
+The previous public title was Astra / Luna Native and the previous repository name was astra-luna-native; use those only to recognize the existing installation.
 
-Locate astra-luna-native/runtime/astra-luna.py under this Codex client's CODEX_HOME.
-Use Python 3.11+ to run doctor through that installed entry. If only the capability snapshot or policy cache is stale, refresh and check once more.
-Run select --project <temporary-directory> --explain in a separate temporary directory and confirm it selects an installed adaptive_luna_* role.
-Do not reinstall, modify business files, run verify --live, or treat role selection as a child-agent invocation.
-Report “local installation check passed” only when doctor returns READY or READY_FALLBACK and selection succeeds.
-Briefly show pass/fail, the actual status, selected role, and next step. Report the specific reason on failure.
+Use this Codex client's existing CODEX_HOME and locate `CODEX_HOME/astra-luna-native/runtime/astra-luna.py`. With Python 3.11+ (`python3` on macOS/Linux or `py -3` on Windows), run `python3 "$CODEX_HOME/astra-luna-native/runtime/astra-luna.py" --codex-home "$CODEX_HOME" doctor` (or the equivalent `py -3` command) through that installed entry, then run `select --project <temporary-directory> --explain` in a separate temporary directory.
+Refresh only when doctor reports a stale capability snapshot or policy cache, and check doctor again. Confirm that selection returns an installed `adaptive_luna_*` role.
+Do not reinstall, change business files, run verify --live, call a model, or treat selection as a child-agent invocation. Report “local installation check passed” only when doctor is READY or READY_FALLBACK and selection succeeds; include the actual status, selected role, and any failure reason.
+```
+
+### Step 3: ask Codex to upgrade an existing installation
+
+Use this when the installed runtime was copied from an earlier source checkout
+or ZIP. The managed runtime path stays the same; updating a checkout alone does
+not update that copied runtime.
+
+```text
+Upgrade my existing Codex Adaptive Agents installation from its project repository:
+https://github.com/aweiht/codex-adaptive-agents
+The previous public title was Astra / Luna Native and the previous repository name was astra-luna-native; identify an existing checkout or receipt with those names as this same project.
+
+Use the current Codex client's CODEX_HOME and its existing `astra-luna-native` installation record. Get the newest source from the repository's default branch and read its VERSION. If the current checkout has dirty edits, preserve them and use a separate fresh checkout for the upgrade. For an old checkout, set `origin` to `https://github.com/aweiht/codex-adaptive-agents.git` or use a new checkout. If the source came from a ZIP, fetch and extract a fresh archive from this repository instead of depending on the old download directory.
+
+Run the source checkout's exact `astra-luna.py` entry with Python 3.11+ and the existing CODEX_HOME (for example, `python3 astra-luna.py --codex-home "$CODEX_HOME" ...`). Obtain and review `install --dry-run`, then apply exactly its returned plan with `install --yes --plan-id <plan_id>`. Let the version migration use trusted prior release metadata; if a managed conflict needs attention, stop and report it. Create the normal backup and preserve unrelated settings, roles, instructions, and files. Do not uninstall first or create a second installation; use this plan to update the existing installation.
+
+Afterward verify the source with `astra-luna.py --version`, verify the installed entry at `CODEX_HOME/astra-luna-native/runtime/astra-luna.py` with `--version`, and run installed `doctor`. Refresh only if the capability snapshot or policy cache is stale. Accept the upgrade only when the source and installed versions report the expected version and doctor is READY or READY_FALLBACK. Do not run verify --live or any model call. Report the source path, installed runtime path, backup, migration result, doctor status, and any conflict.
 ```
 
 To check whether Luna can actually execute tasks, use the separate
@@ -65,7 +85,7 @@ Codex allowance.
 
 ## How the route works
 
-![Astra/Luna Native workflow](docs/images/workflow-en.svg)
+![Codex Adaptive Agents workflow](docs/images/workflow-en.svg)
 
 _The workflow shows installation, daily policy selection, and bounded native
 delegation. It is a usage overview, not evidence of a live model run._
@@ -112,10 +132,9 @@ If Codex is not ready yet, follow the
 [official CLI setup](https://developers.openai.com/codex/cli/) first:
 
 ```sh
-git clone https://github.com/aweiht/astra-luna-native.git
-cd astra-luna-native
+git clone https://github.com/aweiht/codex-adaptive-agents.git
+cd codex-adaptive-agents
 ```
-
 On macOS or Linux, use `python3`:
 
 ```sh
@@ -136,6 +155,8 @@ py -3 .\astra-luna.py doctor
 ```
 
 `install --dry-run` prints the planned managed changes and does not write them.
+`--dry-run` is supported only for `install` and `uninstall`; other commands
+reject it before execution, including `verify --live` and `refresh`.
 `install --yes` applies the planned changes after checking the official CLI
 and required public catalogue. If your Codex home is not the default, pass it
 before the subcommand, for example:
@@ -321,12 +342,14 @@ processes on macOS. See the [process cleanup boundary](docs/PUBLIC_GUIDE.md#proc
 For a real native task check, copy this prompt into Codex:
 
 ```text
-Please run one live native-delegation check for my Astra / Luna Native installation.
+Please run one live native-delegation check for my Codex Adaptive Agents installation:
+https://github.com/aweiht/codex-adaptive-agents
+The previous public title was Astra / Luna Native and the previous repository name was astra-luna-native; use those only to identify the existing installation.
 I authorize this verify --live run to use real Codex allowance: at most two direct Luna children, a 600-second limit, and no automatic retry.
-Use the installed script under the current CODEX_HOME. Run doctor first, and run verify --live only if it passes.
+Use the installed `CODEX_HOME/astra-luna-native/runtime/astra-luna.py` entry with Python 3.11+. Run doctor first, then run verify --live only if doctor passes.
 Let the command create its default isolated temporary verification directory; preserve the results and do not use an existing business directory.
-Inspect the command result and artifacts. Report a live pass only for LIVE_VERIFIED; otherwise explain the failure.
-Give the local result, live result, and evidence-file location. Do not substitute role selection or model self-reports for execution evidence.
+Inspect the command result and artifacts. Report a live pass only for LIVE_VERIFIED; otherwise explain the failure. Do not substitute role selection or model self-reports for execution evidence.
+Give the local result, live result, and evidence-file location.
 ```
 
 Offline tests and live model verification are separate checks. Run the offline
@@ -359,23 +382,38 @@ an installed MCP server, daemon, Hook, scheduler, or resident process.
 
 ## Validation boundary
 
-The public release has a 6/6 cross-platform CI result across macOS, Linux, and
-Windows with Python 3.11 and 3.13. Those CI jobs cover source tests, the
-allowlisted ZIP, and isolated lifecycle checks. Linux and Windows checks use
-fake public client/model data for the lifecycle; historical real native model
-task evidence is macOS-only. See [docs/VALIDATION.md](docs/VALIDATION.md) for
-the observed evidence and its limits.
+Historical published commit `a9ae95e` has a 6/6 cross-platform CI result across
+macOS, Linux, and Windows with Python 3.11 and 3.13. Those CI jobs cover source
+tests, the allowlisted ZIP, and isolated lifecycle checks. Linux and Windows
+checks use fake public client/model data for the lifecycle; historical real
+native model-task evidence is macOS-only. The current 0.5.0 source is
+SOURCE_READY and needs its own evidence; see [docs/VALIDATION.md](docs/VALIDATION.md)
+for the observed layers and limits.
 
 ## Update, recovery, and uninstall
 
-To update a Git checkout, pull the source and apply the managed installation
-again:
+Use the upgrade prompt above for a reviewable in-place upgrade. A Git checkout
+must point at the canonical repository before it is refreshed:
 
 ```sh
+git remote set-url origin https://github.com/aweiht/codex-adaptive-agents.git
 git pull --ff-only
+python3 astra-luna.py --version
 python3 astra-luna.py install --dry-run
-python3 astra-luna.py install --yes
+python3 astra-luna.py install --yes --plan-id <plan_id>
+python3 "$CODEX_HOME/astra-luna-native/runtime/astra-luna.py" --codex-home "$CODEX_HOME" --version
+python3 "$CODEX_HOME/astra-luna-native/runtime/astra-luna.py" --codex-home "$CODEX_HOME" doctor
 ```
+
+`git pull` updates only the checkout; it does not update the copied installed
+runtime. The upgrade uses the existing receipt and runtime path, creates a
+backup, migrates only trusted prior release metadata, and preserves unrelated
+settings and roles. A managed conflict requires attention. There is no need to
+uninstall or reinstall, and there is no automatic or self-update command. ZIP
+users should fetch and extract a fresh archive from the canonical repository;
+the old download directory is not an upgrade source. New model support arrives
+through maintainer releases, so this project does not promise that arbitrary
+future models will work automatically.
 
 Use the same entry point and Codex home:
 
@@ -388,9 +426,14 @@ python3 astra-luna.py rollback --backup PATH --yes
 
 `uninstall --yes` removes the owned runtime and managed role files, reverts the
 managed instruction block and configuration changes, and preserves unrelated
-user changes. The managed receipt and backup history remain available under
-the resource directory. `recover` is for a journal marked `applying`; use the
-backup path recorded by the transaction for an exact rollback.
+user changes. Files and empty configuration tables created by this installation
+are removed only while they contain no later user additions. Older receipts
+without creation records conservatively retain those structures. Backup history
+remains available under the resource directory. `recover` only restores an
+interrupted journal marked `applying`; it refuses a completed installation.
+To reverse a completed transaction, explicitly use `rollback --backup PATH --yes`
+with the backup path recorded by that transaction. `recover` does not accept
+`--backup`, and `rollback` requires it.
 
 ## Build and license
 
@@ -399,7 +442,7 @@ members, broken public Markdown links, private paths, and overwriting an
 existing archive:
 
 ```sh
-python3 scripts/release_python.py --output-dir dist/0.4.0-python
+python3 scripts/release_python.py --output-dir dist/0.5.0-python
 ```
 
 The project is distributed under the [Apache License 2.0](LICENSE). See

@@ -1,35 +1,34 @@
-# Astra / Luna Native
+# Codex Adaptive Agents 0.5.0
 
 **让 Astra 负责规划与验收，让原生 Luna 子 Agent 执行明确的独立任务。**
 
 [English](README.md) · 简体中文 · [验证记录](docs/VALIDATION.md) · [操作指南](docs/PUBLIC_GUIDE.md)
 
-这是一个为 Codex 安装协作规则、原生 Agent 角色和每日选档脚本的开源项目。安装后，继续在 Codex 中提出需求：主 Agent 判断是否值得委派，需要时使用 0–5 个 Luna 子 Agent，最后检查结果并回复。它没有独立网页或聊天窗口。
+Codex Adaptive Agents 是一个为 Codex 安装协作规则、原生 Agent 角色和每日选档脚本的开源项目。安装后，继续在 Codex 中提出需求：主 Agent 判断是否值得委派，需要时使用 0–5 个 Luna 子 Agent，最后检查结果并回复。它没有独立网页或聊天窗口。
 
 安装器、选档策略和验收逻辑均由本仓库实现，无需安装其他 Agent 编排项目。具体模块与外部数据输入见[实现说明](docs/UPSTREAM.md)。
+
+已有安装仍会使用 `astra-luna.py`、`astra_luna`、`astra-luna-native`、`ASTRA_LUNA_NATIVE` 和 `adaptive_luna_*` 这些兼容标识。它们是为了让新版本沿用现有运行时路径和受信凭据、原地升级而有意保留的实现标识，不是本版本的产品名。
 
 运行只需要 **Python 3.11+ 标准库和兼容的官方 Codex CLI**。不需要 Go、自编译二进制或 pip 依赖，也不会安装常驻服务、MCP 服务或 Hook。
 
 ## 最简单的用法：复制给 Codex
 
-在能访问本机文件、运行命令的 Codex 中操作。两步即可：**让 Codex 安装 → 开一个新任务验证**。也可以继续阅读下方的手动命令。
+在能访问本机文件、运行命令的 Codex 中操作。新安装按两步完成：**让 Codex 安装 → 开一个新任务验证**；已有安装需要升级时再使用第三段提示词。也可以继续阅读下方的手动命令。
 
 ### 第一步：复制这段，让 Codex 安装
 
 安装会设置 Astra Max 主控默认值、Luna Max 子模型默认值，以及本项目的五个角色和协作规则；其他配置保留。
 
 ```text
-请帮我安装 Astra / Luna Native：
-https://github.com/aweiht/astra-luna-native
+请从 Codex Adaptive Agents 的项目仓库为我安装：
+https://github.com/aweiht/codex-adaptive-agents
+旧公开标题是 Astra / Luna Native，旧仓库名是 astra-luna-native；只用它们识别已有源码目录或安装记录，不要把它们当作当前产品名。
 
-请克隆或复用这个仓库的独立目录，保留已有修改，阅读 README.zh-CN.md 后直接执行安装。
-确认 Python 3.11+、官方 Codex CLI 和所需模型目录可用，使用当前 Codex 的 CODEX_HOME。
-以下命令均通过仓库中的 astra-luna.py 入口运行，macOS/Linux 用 python3，Windows 用 py -3。
-我授权安装本项目的受管配置、五个 Luna 角色、协作规则和运行脚本，保留其他配置与备份。
-先运行 install --dry-run，由你检查改动范围，再用计划返回的 plan_id 执行 install --yes --plan-id <plan_id>。
-随后运行 doctor；若只是能力快照或选档缓存过期，运行 refresh 后再检查一次。
-请实际完成安装，不要只给我步骤；依赖、登录、权限或冲突需要我处理时说明具体问题。
-最后告诉我安装结果、安装目录，并提醒我重新打开 Codex、开始新任务验证。此步不运行 verify --live。
+保留已有修改。阅读项目 README.zh-CN.md，使用当前 Codex 已在使用的 CODEX_HOME，通过源码目录中的准确 astra-luna.py 入口运行；macOS/Linux 用 Python 3.11+ 的 `python3 astra-luna.py`，Windows 用 `py -3 .\astra-luna.py`。
+安装 Codex Adaptive Agents 的受管运行时、五个 adaptive_luna_* 角色和规则，同时保留其他设置、角色、备份与文件。
+先运行 `install --dry-run` 并检查计划，再严格用返回的 `<plan_id>` 执行 `install --yes --plan-id <plan_id>`。随后运行 `doctor`；只有能力快照或选档缓存过期时才运行 `refresh`，再检查一次。
+请实际完成安装并报告源码路径、CODEX_HOME、计划结果和 doctor 状态。只有安装完成且 doctor 为 READY 或 READY_FALLBACK 才算成功。此步不要运行 verify --live 或任何模型任务；依赖、登录、权限或冲突需我处理时给出具体原因。
 ```
 
 ### 第二步：新建 Codex 任务，复制这段验证
@@ -37,15 +36,29 @@ https://github.com/aweiht/astra-luna-native
 这一步检查安装和角色选档，不额外启动模型验收任务。`READY` 或 `READY_FALLBACK` 且选档成功，表示本地安装检查通过。
 
 ```text
-请验证本机 Astra / Luna Native 是否安装成功：
-https://github.com/aweiht/astra-luna-native
+请验证本机 Codex Adaptive Agents 是否安装成功：
+https://github.com/aweiht/codex-adaptive-agents
+旧公开标题是 Astra / Luna Native，旧仓库名是 astra-luna-native；只用它们识别已有安装。
 
-使用当前 Codex 的 CODEX_HOME，找到其中的 astra-luna-native/runtime/astra-luna.py。
-用 Python 3.11+ 运行该已安装入口的 doctor；若只是能力快照或选档缓存过期，refresh 后再检查一次。
-在独立临时目录运行 select --project <临时目录> --explain，核对返回的是已安装的 adaptive_luna_* 角色。
-不要重新安装，不修改业务文件，不运行 verify --live，也不要把选档当成已经调用子 Agent。
-只有 doctor 为 READY 或 READY_FALLBACK 且选档成功，才报告“本地安装检查通过”。
-最后简洁展示：通过或失败、实际状态、选中角色、下一步。失败时给出具体原因。
+使用当前 Codex 的 CODEX_HOME，找到 `CODEX_HOME/astra-luna-native/runtime/astra-luna.py`。用 Python 3.11+（macOS/Linux 用 `python3`，Windows 用 `py -3`）通过这个已安装入口运行 `python3 "$CODEX_HOME/astra-luna-native/runtime/astra-luna.py" --codex-home "$CODEX_HOME" doctor`（Windows 使用对应的 `py -3` 命令），再在独立临时目录运行 `select --project <临时目录> --explain`。
+只有 doctor 报告能力快照或选档缓存过期时才运行 `refresh`，然后再次检查 doctor；核对选档返回已安装的 `adaptive_luna_*` 角色。
+不要重新安装、修改业务文件、运行 verify --live、调用模型，也不要把选档当成已经调用子 Agent。只有 doctor 为 READY 或 READY_FALLBACK 且选档成功，才报告“本地安装检查通过”；同时展示实际状态、选中角色和失败原因。
+```
+
+### 第三步：复制这段，让 Codex 升级已有安装
+
+适用于运行时从旧源码目录或 ZIP 复制安装的情况。受管运行时路径保持不变；只更新源码目录不会更新已经复制到 CODEX_HOME 的运行时。
+
+```text
+请从 Codex Adaptive Agents 的项目仓库升级我已有的安装：
+https://github.com/aweiht/codex-adaptive-agents
+旧公开标题是 Astra / Luna Native，旧仓库名是 astra-luna-native；把带这些名称的已有源码目录或安装记录识别为同一个项目。
+
+使用当前 Codex 的 CODEX_HOME 和已有的 `astra-luna-native` 安装记录。从项目默认分支获取最新源码并读取 VERSION。若当前源码目录有未提交修改，保留它们，必要时使用新的独立源码目录完成升级。旧目录要把 origin 指向 `https://github.com/aweiht/codex-adaptive-agents.git`，或直接使用新目录。若源码来自 ZIP，请从该项目仓库重新获取并解压，不要依赖旧下载目录。
+
+用 Python 3.11+ 通过源码目录的准确 `astra-luna.py` 入口并指定现有 CODEX_HOME（例如 `python3 astra-luna.py --codex-home "$CODEX_HOME" ...`）。先取得并审阅 `install --dry-run` 计划，再严格用返回的 `<plan_id>` 执行 `install --yes --plan-id <plan_id>`。让版本迁移只使用可信的旧版本记录；受管冲突需要我处理时停止并报告。建立正常备份，保留其他设置、角色、规则和文件；不要先卸载，也不要另建第二套安装目录，用这个计划更新现有安装。
+
+升级后，用 `astra-luna.py --version` 检查源码，再用 `CODEX_HOME/astra-luna-native/runtime/astra-luna.py --version` 检查已安装入口，并运行已安装入口的 `doctor`。只有能力快照或选档缓存过期时才运行 `refresh`。源码和已安装版本应为预期版本，且 doctor 为 READY 或 READY_FALLBACK 才算成功。不要运行 verify --live 或任何模型调用；报告源码路径、运行时路径、备份、迁移结果、doctor 状态和冲突。
 ```
 
 想确认 Luna 确实能执行任务，再使用下方[真实原生委派验证](#可选验证真实原生委派)；它会使用真实 Codex 额度。
@@ -75,8 +88,8 @@ Windows PowerShell 用 `py -3 --version` 检查 Python，确认版本不低于 3
 macOS / Linux：
 
 ```sh
-git clone https://github.com/aweiht/astra-luna-native.git
-cd astra-luna-native
+git clone https://github.com/aweiht/codex-adaptive-agents.git
+cd codex-adaptive-agents
 python3 astra-luna.py install --dry-run
 python3 astra-luna.py install --yes
 python3 astra-luna.py doctor
@@ -85,8 +98,8 @@ python3 astra-luna.py doctor
 Windows PowerShell：
 
 ```powershell
-git clone https://github.com/aweiht/astra-luna-native.git
-cd astra-luna-native
+git clone https://github.com/aweiht/codex-adaptive-agents.git
+cd codex-adaptive-agents
 py -3 .\astra-luna.py install --dry-run
 py -3 .\astra-luna.py install --yes
 py -3 .\astra-luna.py doctor
@@ -94,7 +107,7 @@ py -3 .\astra-luna.py doctor
 
 下载 ZIP 的用户，在解压目录里运行后三条命令即可。Windows 的 `py -3` 应指向 Python 3.11+；没有 Python launcher 时，可以换成对应的 `python` 命令。
 
-`--dry-run` 展示改动计划；`--yes` 应用当前计划并备份。默认安装目标是 `CODEX_HOME`，未设置时为用户目录下的 `.codex`。安装到已有 Codex 使用的同一个目录，避免把空白目录当成已登录环境。
+`--dry-run` 仅用于 `install` 和 `uninstall`，展示改动计划；其他命令会在执行前拒绝该参数，包括 `verify --live` 和 `refresh`。`--yes` 应用当前计划并备份。默认安装目标是 `CODEX_HOME`，未设置时为用户目录下的 `.codex`。安装到已有 Codex 使用的同一个目录，避免把空白目录当成已登录环境。
 
 **安装会修改哪些内容？** 它设置受管的 Astra Max 主控默认值、Luna Max 子模型默认值和最多五个并发子 Agent，安装五个 Luna 角色、协作规则与 Python 运行脚本。其他配置、角色和规则保留；受管文件发生冲突时会拒绝覆盖。修改前先建立备份。
 
@@ -173,9 +186,11 @@ Windows 把 `python3` 换成 `py -3`。`doctor` 检查本地安装，不调用�
 需要真实任务证据时，可以再复制这段给 Codex：
 
 ```text
-请为本机 Astra / Luna Native 运行一次真实原生委派验收。
+请为本机 Codex Adaptive Agents 运行一次真实原生委派验收：
+https://github.com/aweiht/codex-adaptive-agents
+旧公开标题是 Astra / Luna Native，旧仓库名是 astra-luna-native；只用它们识别已有安装。
 我同意本次 verify --live 使用真实 Codex 额度，最多两个直接 Luna 子 Agent，600 秒上限，不自动重试。
-使用当前 CODEX_HOME 下的已安装脚本；先检查 doctor，通过后运行 verify --live。
+使用当前 CODEX_HOME 下 `astra-luna-native/runtime/astra-luna.py` 的已安装入口，并用 Python 3.11+ 运行；先检查 doctor，通过后运行 verify --live。
 使用命令默认创建的独立临时验收目录，保留结果，不使用已有业务目录。
 检查命令结果和产物；只有返回 LIVE_VERIFIED 才报告真实委派通过，否则说明失败原因。
 最后给出本地检查结果、真实委派结果及验收文件位置，不用模型自述或选档结果代替证据。
@@ -204,17 +219,23 @@ python3 astra-luna.py verify --live
 | 某个项目同一天选档失败后仍被阻塞 | 运行 `python3 astra-luna.py refresh --project /path/to/project`，再对同一项目运行 `select --explain`；不带 `--project` 的 `refresh` 只更新 home 级策略。 |
 | 修改过受管角色后升级失败 | 保留改动，检查冲突并决定如何合并；不要直接覆盖文件或安装凭据。 |
 | 安装后没有使用 Luna | 先开始新 Codex 任务；简单任务直接完成是正常情况。需要独立验收时使用显式的 `verify --live`。 |
-| Windows / Linux 的真实模型任务是否已验证？ | 已通过这些系统的 CI 安装与打包测试，CLI/模型数据使用模拟输入；已有真实模型证据仅来自 macOS。 |
+| Windows / Linux 的真实模型任务是否已验证？ | 历史提交 `a9ae95e` 已通过这些系统的 CI 安装与打包测试，CLI/模型数据使用模拟输入；0.5.0 需核对其发布后的 CI。已有真实模型证据仅来自 macOS。 |
 
 ## 更新、卸载与恢复
 
-更新源码后，重新预览并应用受管安装：
+已有安装请使用上面的升级提示词，按计划原地更新。Git 源码目录必须先指向项目仓库：
 
 ```sh
+git remote set-url origin https://github.com/aweiht/codex-adaptive-agents.git
 git pull --ff-only
+python3 astra-luna.py --version
 python3 astra-luna.py install --dry-run
-python3 astra-luna.py install --yes
+python3 astra-luna.py install --yes --plan-id <plan_id>
+python3 "$CODEX_HOME/astra-luna-native/runtime/astra-luna.py" --codex-home "$CODEX_HOME" --version
+python3 "$CODEX_HOME/astra-luna-native/runtime/astra-luna.py" --codex-home "$CODEX_HOME" doctor
 ```
+
+`git pull` 只更新源码目录，不会更新已经复制到 CODEX_HOME 的运行时。升级沿用现有安装记录和运行时路径，创建备份，只迁移可信的旧版本记录，并保留其他设置和角色；受管冲突需要人工处理。无需卸载或重新安装，也没有自动或 self-update 命令。ZIP 用户应从项目仓库重新获取并解压新源码，不要依赖旧下载目录。新模型支持随维护者发布版本提供，不保证任意未来模型自动可用。
 
 卸载前同样可以查看计划：
 
@@ -225,16 +246,18 @@ python3 astra-luna.py uninstall --yes
 
 原下载目录可以移动；安装后的独立入口位于 `<CODEX_HOME>/astra-luna-native/runtime/astra-luna.py`。仍需保留安装时使用的 Python 路径可用。卸载移除受管安装内容并恢复受管配置；若检测到后续冲突则拒绝覆盖。中断事务恢复及按备份回滚见[操作指南](docs/PUBLIC_GUIDE.md#recovery-and-uninstall)。
 
+本次安装新建的文件和空配置表，只在没有后续用户内容时移除；缺少创建记录的旧凭据会保守保留这些结构。`recover --yes` 仅恢复状态为 `applying` 的中断事务，不会撤销已完成安装。要撤销已完成事务，须明确执行 `rollback --backup PATH --yes`，其中 `PATH` 是该事务记录的备份路径。`recover` 不接受 `--backup`，`rollback` 必须指定它。
+
 ## 开发与验证范围
 
 无需调用模型即可运行源码测试并构建源码包：
 
 ```sh
 python3 -m unittest discover -s tests_python -p 'test_*.py' -v
-python3 scripts/release_python.py --output-dir dist/0.4.0-python
+python3 scripts/release_python.py --output-dir dist/0.5.0-python
 ```
 
-打包目录须是新的，脚本不会覆盖已有发行包。源码包包含中英文文档、运行图片、测试和校验和。macOS、Ubuntu 和 Windows 的 Python 3.11 / 3.13 CI 用于检查源码、隔离安装和打包；不证明你的账号当前有模型权限或额度。详见[验证记录](docs/VALIDATION.md)与[贡献指南](CONTRIBUTING.md)。
+打包目录须是新的，脚本不会覆盖已有发行包。源码包包含中英文文档、运行图片、测试和校验和。历史发布提交 `a9ae95e` 的 macOS、Ubuntu 和 Windows Python 3.11 / 3.13 CI 检查了源码、隔离安装和打包；Linux/Windows 使用模拟的公开客户端和模型数据，历史真实模型任务证据仅来自 macOS，也不证明你的账号当前有模型权限或额度。当前 0.5.0 源码为 SOURCE_READY，详见[验证记录](docs/VALIDATION.md)与[贡献指南](CONTRIBUTING.md)。
 
 ## 许可与实现
 

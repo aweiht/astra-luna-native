@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,7 +27,9 @@ class ProcessRegistryTests(unittest.TestCase):
 
     def setUp(self):
         self._temporary = tempfile.TemporaryDirectory(prefix="astra-luna-process-registry-")
-        self.project = Path(self._temporary.name).resolve()
+        self.project = Path(self._temporary.name) / "MiXeDProject"
+        self.project.mkdir()
+        self.project = self.project.resolve()
         self._run_ids = []
         self._wrappers = []
         self._handles = []
@@ -65,9 +68,10 @@ class ProcessRegistryTests(unittest.TestCase):
             except (OSError, subprocess.TimeoutExpired):
                 pass
 
-    def _invoke(self, command, *options, expected=0, timeout=30):
+    def _invoke(self, command, *options, expected=0, timeout=30, project=None):
+        target_project = self.project if project is None else Path(project)
         args = [PYTHON, "-I", "-B", str(ENTRY), command,
-                "--project", str(self.project), *map(str, options)]
+                "--project", str(target_project), *map(str, options)]
         completed = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    timeout=timeout)
         stdout = completed.stdout.decode("utf-8", errors="replace")
@@ -81,6 +85,18 @@ class ProcessRegistryTests(unittest.TestCase):
             self.assertEqual(completed.returncode, expected,
                              {"command": args, "result": value, "stderr": stderr})
         return value
+
+    def _case_alias(self):
+        alias = Path(str(self.project).lower())
+        if str(alias) == str(self.project):
+            self.skipTest("test fixture has no mixed-case path component")
+        try:
+            same_directory = os.path.samefile(self.project, alias)
+        except (OSError, ValueError):
+            same_directory = False
+        if not same_directory:
+            self.skipTest("case-insensitive filesystem alias is unavailable")
+        return alias
 
     def _init_run(self):
         result = self._invoke("process-init")
@@ -333,6 +349,89 @@ class ProcessRegistryTests(unittest.TestCase):
         rejected = self._invoke("process-check", "--run-id", run_id, expected=1)
         self.assertEqual(rejected["status"], "ERROR")
         self.assertNotEqual(self._invoke("process-cleanup", "--run-id", run_id, expected=1)["status"], "CLEAN")
+
+    def test_case_alias_check_cleanup_active_command(self):
+        alias = self._case_alias()
+        live = self._start_live("case-alias-active")
+
+        active = self._invoke("process-check", "--run-id", live["run_id"],
+                              project=alias, expected=1)
+        self.assertEqual(active["status"], "DIRTY")
+        cleaned = self._invoke("process-cleanup", "--run-id", live["run_id"],
+                               project=alias)
+        self.assertEqual(cleaned["status"], "CLEAN")
+        checked = self._invoke("process-check", "--run-id", live["run_id"],
+                               project=alias)
+        self.assertEqual(checked["status"], "CLEAN")
+
+    def test_existing_run_can_start_again_through_case_alias(self):
+        alias = self._case_alias()
+        run_id = self._init_run()
+        result = self._invoke(
+            "process-run", "--run-id", run_id, "--owner", "case-alias-tests",
+            "--purpose", "start an existing run through a case alias", "--timeout", 10,
+            "--", PYTHON, "-I", "-B", "-c", "print('case-alias-ok')",
+            project=alias,
+        )
+        self.assertEqual(result["status"], "SUCCESS")
+        self.assertIn("case-alias-ok", result["stdout"])
+        self.assertEqual(self._invoke("process-check", "--run-id", run_id,
+                                      project=alias)["status"], "CLEAN")
+        self.assertEqual(self._invoke("process-cleanup", "--run-id", run_id,
+                                      project=alias)["status"], "CLEAN")
+
+    def test_copied_ledger_for_different_project_is_rejected(self):
+        run_id = self._init_run()
+        result = self._run_command(run_id, [PYTHON, "-I", "-B", "-c", "print('ledger-copy')"])
+        self.assertEqual(result["status"], "SUCCESS")
+
+        other_temporary = tempfile.TemporaryDirectory(prefix="astra-luna-process-registry-copy-")
+        self.addCleanup(other_temporary.cleanup)
+        other = Path(other_temporary.name).resolve()
+        source_dir = self.project / ".astra-luna" / "processes" / run_id
+        copied_dir = other / ".astra-luna" / "processes" / run_id
+        copied_dir.parent.mkdir(parents=True)
+        shutil.copytree(source_dir, copied_dir)
+
+        rejected = self._invoke("process-check", "--run-id", run_id,
+                                project=other, expected=1)
+        self.assertEqual(rejected["status"], "ERROR")
+
+        copied_run = self._read_json(copied_dir / "run.json")
+        self.assertIsNotNone(copied_run)
+        copied_run["project"] = str(other)
+        atomic(copied_dir / "run.json", encode(copied_run))
+        rejected_entry = self._invoke("process-check", "--run-id", run_id,
+                                      project=other, expected=1)
+        self.assertEqual(rejected_entry["status"], "ERROR")
+
+    def test_legacy_entry_without_project_remains_bound_to_validated_run(self):
+        completed_run = self._init_run()
+        completed = self._run_command(
+            completed_run, [PYTHON, "-I", "-B", "-c", "print('legacy-completed')"]
+        )
+        self.assertEqual(completed["status"], "SUCCESS")
+        completed_entry = self._read_json(
+            self.project / ".astra-luna" / "processes" / completed_run
+            / (completed["entry_id"] + ".json")
+        )
+        completed_entry.pop("project", None)
+        atomic(
+            self.project / ".astra-luna" / "processes" / completed_run
+            / (completed["entry_id"] + ".json"),
+            encode(completed_entry),
+        )
+        self.assertEqual(self._invoke("process-check", "--run-id", completed_run)["status"], "CLEAN")
+        self.assertEqual(self._invoke("process-cleanup", "--run-id", completed_run)["status"], "CLEAN")
+
+        active = self._start_live("legacy-active")
+        with process_registry._run_lock(self.project, active["run_id"]):
+            active_entry = self._read_json(active["entry_path"])
+            active_entry.pop("project", None)
+            atomic(active["entry_path"], encode(active_entry))
+        active_check = self._invoke("process-check", "--run-id", active["run_id"], expected=1)
+        self.assertEqual(active_check["status"], "DIRTY")
+        self.assertEqual(self._invoke("process-cleanup", "--run-id", active["run_id"])["status"], "CLEAN")
 
 
 if __name__ == "__main__":

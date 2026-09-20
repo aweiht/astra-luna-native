@@ -1,9 +1,11 @@
-# Public operator guide
+# Codex Adaptive Agents public operator guide
 
-**0.4.0 status: SOURCE_PUBLISHED.** The package contains the Python source used
-at runtime. Windows, Linux and macOS CI passed source, isolated installation
-and package checks. Real model-task evidence is macOS only. See
-[VALIDATION.md](VALIDATION.md).
+**0.5.0 status: SOURCE_READY.** Codex Adaptive Agents uses the canonical
+repository at <https://github.com/aweiht/codex-adaptive-agents>. The package
+contains the Python source used at runtime. Historical commit `a9ae95e` passed
+Windows, Linux and macOS source, isolated installation, and package checks;
+consult [VALIDATION.md](VALIDATION.md) for the current 0.5.0 local evidence and
+the limits of that historical CI. Real model-task evidence is macOS only.
 
 ## Downloaded package
 
@@ -11,6 +13,12 @@ The package contains one Python entry script, the astra_luna modules and
 public smoke assets, tests_python, public Markdown, LICENSE, NOTICE, VERSION,
 release-manifest.json, the release script, and SHA256SUMS. Source equals
 runtime under the checked-in allowlist.
+
+Existing installations may identify this project as the former public title
+“Astra / Luna Native” or repository name `astra-luna-native`. The compatibility
+identifiers `astra-luna.py`, `astra_luna`, `astra-luna-native`,
+`ASTRA_LUNA_NATIVE`, and `adaptive_luna_*` remain unchanged so an upgrade can
+reuse the existing runtime path and trusted receipt.
 
 It requires Python 3.11 or newer from the standard library. It has no pip
 dependency, Go requirement, or compiled binary. The package does not include
@@ -74,6 +82,51 @@ py -3 $Entry --codex-home $CodexHome uninstall --dry-run
 
 A successful uninstall removes the owned runtime and managed installation
 files while preserving unrelated user changes.
+
+## Upgrade an existing installation
+
+Use the canonical source at
+<https://github.com/aweiht/codex-adaptive-agents> and read its `VERSION` from
+the default branch. The source is published from that branch; an upgrade does
+not require a GitHub Release or tag. An existing checkout or receipt may still
+say “Astra / Luna Native” or `astra-luna-native`; those names identify the same
+installation for migration.
+
+For a Git checkout with local edits, preserve the edits and use a separate
+fresh checkout when necessary. On an old checkout, set the canonical remote or
+clone a new checkout:
+
+~~~sh
+git remote set-url origin https://github.com/aweiht/codex-adaptive-agents.git
+git pull --ff-only
+python3 astra-luna.py --version
+~~~
+
+ZIP users should fetch and extract a fresh archive from that repository. The old
+download directory is not an upgrade source. Updating a checkout with `git pull`
+alone does not update the copied runtime under `CODEX_HOME`.
+
+Use the existing `CODEX_HOME`, receipt, and installed runtime path. From the
+new source checkout, obtain and review a plan, then apply exactly that plan:
+
+~~~sh
+python3 astra-luna.py --codex-home "$CODEX_HOME" install --dry-run
+python3 astra-luna.py --codex-home "$CODEX_HOME" install --yes --plan-id <plan_id>
+python3 astra-luna.py --version
+python3 "$CODEX_HOME/astra-luna-native/runtime/astra-luna.py" --codex-home "$CODEX_HOME" --version
+python3 "$CODEX_HOME/astra-luna-native/runtime/astra-luna.py" --codex-home "$CODEX_HOME" doctor
+~~~
+
+The installer makes its normal backup, preserves unrelated settings and roles,
+and migrates only trusted prior release metadata. A managed conflict requires
+attention; do not overwrite it. There is no need to uninstall or reinstall, and
+there is no automatic or self-update command. Refresh only when the capability
+snapshot or policy cache is stale, then run `doctor` again. Accept the upgrade
+only when the source and installed `--version` outputs match the expected
+version and `doctor` returns `READY` or `READY_FALLBACK`. New model support
+arrives through maintainer releases; arbitrary future models are not promised
+to work automatically. Do not run `verify --live` or a model call as part of
+this upgrade check.
 
 ## Offline commands and policy
 
@@ -268,8 +321,18 @@ python3 astra-luna.py recover --yes
 python3 astra-luna.py rollback --backup PATH --yes
 ~~~
 
-Recovery is for a journal marked applying. The installer refuses to overwrite
-an unrelated user change when restoring a recorded transaction.
+`--dry-run` is accepted only by `install` and `uninstall`. Other commands reject
+it before execution; it cannot be used to preview `refresh` or `verify --live`.
+
+`recover --yes` restores only an interrupted journal marked `applying`. It
+refuses a committed journal and does not accept `--backup`. To reverse a
+completed transaction, `rollback --backup PATH --yes` requires its recorded
+backup path. Both operations refuse to overwrite an unrelated user change.
+
+Uninstall removes files and empty configuration tables created by the installer
+only when their creation was recorded and they contain no later user additions.
+Receipts from older installations may lack these records; uninstall then retains
+the structures instead of guessing ownership. Backup history is preserved.
 
 ## Package inspection
 
@@ -277,7 +340,7 @@ The checked-in release manifest is the exact allowlist. Build a private
 package with:
 
 ~~~sh
-python3 scripts/release_python.py --output-dir /tmp/astra-luna-release
+python3 scripts/release_python.py --output-dir /tmp/codex-adaptive-agents-release
 ~~~
 
 The in-package SHA256SUMS covers each regular payload file except itself. The

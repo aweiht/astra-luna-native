@@ -1,66 +1,84 @@
-# 0.4.0 validation
+# Codex Adaptive Agents validation
 
-**Published baseline: SOURCE_PUBLISHED.** Observed on 2026-09-15 with macOS arm64,
-Python 3.14.6 and official Codex CLI 0.147.0. These are 0.4.0 observations;
-older releases are not used as runtime evidence for this version.
+Validation is tied to a source revision and a test environment. Source tests and
+package checks do not establish official login, current quota or real model
+access on another machine.
 
-| Layer | Published baseline |
+## 0.5.0 rename and upgrade compatibility
+
+The project name and repository change to Codex Adaptive Agents. The existing
+entry script, installation paths and role IDs are retained for compatibility.
+The tests for this revision distinguish an upgrade from actual 0.4.0 source
+from simulated future default migrations. Simulated models are test fixtures;
+they do not establish real model availability.
+
+On 2026-09-20, the integrated local suite ran **95 offline tests: 94 passed,
+one Linux-only test skipped**, on macOS arm64 / Python 3.14.6. It covers trusted
+version profiles, unknown or malformed version refusal, downgrade refusal,
+managed-key conflicts, original-value preservation, and legacy schema-1/2
+receipts without a version field.
+
+Separate CLI acceptance used both the published `a9ae95e` source and the repaired
+0.4.0 source package: install, upgrade to 0.5.0, explicit backup rollback,
+upgrade again, move the old download, and uninstall all passed. Unrelated
+configuration, roles and instructions were preserved; uninstall restored the
+original managed values while retaining later user additions. The future-model
+migration tests use source-declared synthetic profiles only.
+
+The existing local installation was upgraded from a reviewed plan with a backup.
+Its installed entry reports **0.5.0** and `doctor` reports **READY_FALLBACK**.
+Configuration, all six existing role files, and instructions outside the managed
+block remained byte-identical. All 16 runtime files match source, and a repeated
+installation plan contains no changes. The bilingual READMEs each contain four
+self-contained prompts with the full repository URL and legacy identity.
+
+No new live model calls were made for this revision. Its Linux/Windows CI must
+be checked after publication; the historical run below does not validate 0.5.0.
+
+## Published source at a9ae95e — 2026-09-20
+
+[CI run 35502299459](https://github.com/aweiht/codex-adaptive-agents/actions/runs/35502299459)
+passed all **six jobs** for commit `a9ae95e02086711c5e7325698e43445ab44cc05a`.
+The suite at that commit contains **74 offline tests**; platform-specific tests
+may be skipped outside their target operating system.
+
+| Layer | Evidence for that commit |
 | --- | --- |
-| Python source tests | 42 tests on each CI matrix target |
-| Package | One allowlisted Python ZIP; internal and external SHA256 checks |
-| macOS runtime | Clean install, repeat install, moved download, doctor, select, refresh, recovery and uninstall checked |
-| Existing macOS installation | Managed upgrade to 0.4.0; unrelated configuration and role retained |
-| Real native tasks | Two direct Luna Max children completed; real artifact and public event revalidation passed |
-| Linux runtime | Ubuntu 24.04: isolated CLI lifecycle and source/package tests passed; client/model data mocked |
-| Windows runtime | Windows Server 2022: isolated CLI lifecycle and source/package tests passed; client/model data mocked |
-| Python 3.11 and 3.13 | Tests and package build passed on all three hosted operating systems |
-| Remote CI | [Current workflow runs](https://github.com/aweiht/astra-luna-native/actions/workflows/native.yml); check the run for the source commit you use |
+| macOS, Linux and Windows | macos-14, ubuntu-24.04 and windows-2022 with Python 3.11 and 3.13; six successful CI jobs |
+| Isolated installation | Install, repeat install, moved download, doctor, select, refresh and uninstall with simulated public CLI/catalogue data |
+| Process handoff | Registered success/failure/timeout, launcher death, retained-service cleanup, stale identities, missing entries and unrelated-process preservation |
+| Package | Allowlisted Python ZIP, safe paths, public Markdown links and internal/external SHA256 checks |
+| Local macOS | 74 tests: 73 passed, one Linux-only test skipped on arm64 / Python 3.14.6 |
+| Real model calls | No additional live run for this commit; historical macOS evidence is described below |
 
-The release is a readable Python 3.11+ standard-library ZIP. No Go compiler,
-custom binary or pip package is needed. Source tests and package inspection do
-not prove official login, current quota or model access on another machine.
+This CI run covers the previously added process commands and adversarial fixes.
+It does not validate subsequent source changes. For another commit, check its
+own run in the [workflow history](https://github.com/aweiht/codex-adaptive-agents/actions/workflows/native.yml).
 
+## Follow-up regression fixes — 2026-09-20
 
-## Local process handoff on 2026-09-20 (not yet pushed)
+The follow-up changes separate interrupted recovery from explicit rollback,
+reject unsupported dry-run requests before execution, recognize process-project
+case aliases by directory identity, validate backup paths before directory
+creation, preserve user content during uninstall, and validate receipt types.
+The full local suite ran **86 offline tests: 85 passed, one Linux-only test
+skipped**, on macOS arm64 / Python 3.14.6. Independent installed-entry checks
+confirmed committed-recovery refusal without mutation, explicit rollback,
+restoration of original file presence/content after uninstall, structured
+malformed-receipt rejection, no outside directory creation through a backup
+symlink, and active-process cleanup through a real APFS case alias. New tests
+also preserve compatibility with old process ledgers and installation receipts.
 
-The current local source ran **74 offline tests: 73 passed, one Linux-only test
-skipped**, on macOS arm64 / Python 3.14.6. Ten process-registry regressions cover
-real CLI success/failure/timeout, concurrent entry registration, launcher death,
-retained services followed by later cleanup, other-run and unrelated-process
-preservation, stale identity rejection, missing entry files, Darwin exec identity
-and scalar Tracker birth tokens. The installed-entry lifecycle also checks the
-new commands after the original download moves.
+The published run above predates these changes; it is not their Linux or Windows
+validation. No new live model smoke test is included in these fixes.
 
-Independent real-process checks confirmed retained-service cleanup and recovery
-after a killed launcher, with an unrelated process kept running. Records are
-written before launch, and parent checks re-read OS process identities. A missing
-completion report remains visible after successful cleanup; `CLEAN` is a process
-result, not evidence of successful task work.
-
-This revision has not been pushed or run in Linux/Windows CI. The platform
-branches are implemented; the published CI results below are historical and do
-not validate these new commands on those operating systems. No new live model
-smoke test was run. The cooperative registry does not guarantee detection of
-unregistered or unobservable descendants; the macOS containment boundary remains.
-
-## Local adversarial fixes on 2026-09-20 (not yet pushed)
-
-The revised source ran 64 offline tests on macOS arm64 / Python 3.14.6:
-63 passed and the Linux-only double-fork/subreaper test was skipped. The tests
-cover deadline fallback with original snapshot age, same-day project recovery,
-contradictory public model/effort metadata, APFS case-alias lifecycle, detached
-children after timeout or parent exit, unrelated-process preservation and
-signal exit status. Cleanup-failure, non-UTF-8 process-name parsing, zero-PID
-rejection and old schema-4 upgrade regressions also passed. Fixture scripts ran against the independent 132 + 132 + 5
-case oracle; no live model task was started.
-
-Linux subreaper code and Windows compatibility remain pending this revision's
-hosted CI. Earlier matrix results in this document describe the published
-baseline, not the unpushed changes. The workflow now runs on all pushes and pull
-requests, so translated README, image and ignore-rule changes cannot bypass it.
-Older macOS kernels without original-parent-version metadata explicitly skip
-the detached-child/early-parent-exit subcase; that boundary is not claimed as
-verified on those kernels. See the [macOS cleanup limit](PUBLIC_GUIDE.md#process-cleanup-boundary).
+The process registry records command identities before launch and rechecks them
+against the operating system. `CLEAN` only describes registered process cleanup,
+not successful task work. Missing completion reports remain visible. This
+cooperative registry cannot guarantee discovery of unregistered or unobservable
+descendants; see the [macOS cleanup limit](PUBLIC_GUIDE.md#process-cleanup-boundary).
+Older macOS kernels without original-parent-version metadata skip the detached
+child/early-parent-exit subcase rather than claim it verified.
 
 ## Documentation verification on 2026-09-19
 
@@ -112,7 +130,7 @@ The builder checks an explicit file allowlist, safe archive paths, symlinks,
 public Markdown links, private path leakage, complete SHA256 coverage and
 output overwrite protection. Existing release archives are never overwritten.
 
-## Real task evidence
+## Historical real task evidence — 2026-09-15
 
 The real run took 342.20 seconds. An Astra Max root created exactly two direct
 adaptive_luna_max children. Each child completed an initial turn and a revision

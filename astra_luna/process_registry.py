@@ -16,6 +16,7 @@ import math
 import os
 from pathlib import Path
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -121,6 +122,57 @@ def _project(value: object) -> Path:
     return result
 
 
+def _same_real_directory(left: object, right: object) -> bool:
+    """Match a directory identity while accepting only a case alias.
+
+    The registry stores a project path in both the run and entry ledgers.  A
+    case-insensitive filesystem can return the same directory for paths with
+    different casing, but a plain case-folded string comparison would also
+    accept a copied or redirected ledger.  ``samefile`` proves the filesystem
+    identity; rejecting symlink/reparse components and requiring the
+    normalized strings to differ only by case keeps the accepted alias
+    narrow on POSIX and Windows.
+    """
+    if not isinstance(left, (str, Path)) or not isinstance(right, (str, Path)):
+        return False
+    try:
+        left_path = Path(left)
+        right_path = Path(right)
+        if not left_path.is_absolute() or not right_path.is_absolute():
+            return False
+
+        def has_link_component(path: Path) -> bool:
+            current = Path(path.anchor)
+            for part in path.parts[1:]:
+                current /= part
+                try:
+                    info = current.lstat()
+                except (OSError, ValueError):
+                    return False
+                if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+                    return True
+            return False
+
+        if has_link_component(left_path) or has_link_component(right_path):
+            return False
+        left_info = left_path.lstat()
+        right_info = right_path.lstat()
+        if (
+            stat.S_ISLNK(left_info.st_mode)
+            or stat.S_ISLNK(right_info.st_mode)
+            or getattr(left_info, "st_file_attributes", 0) & 0x400
+            or getattr(right_info, "st_file_attributes", 0) & 0x400
+            or not stat.S_ISDIR(left_info.st_mode)
+            or not stat.S_ISDIR(right_info.st_mode)
+        ):
+            return False
+        if not os.path.samefile(left_path, right_path):
+            return False
+        return os.path.normpath(os.fspath(left_path)).casefold() == os.path.normpath(os.fspath(right_path)).casefold()
+    except (OSError, TypeError, ValueError, RuntimeError):
+        return False
+
+
 def _run_id(value: object) -> str:
     if not isinstance(value, str) or not _RUN_ID_RE.fullmatch(value):
         raise ProcessRegistryError("invalid run id")
@@ -185,7 +237,7 @@ def _validate_run(value: dict, project: Path, run_id: str) -> dict:
     allowed = {"schema", "run_id", "project", "created_at", "status", "closed_at", "result_status", "entry_ids", "retained"}
     if set(value) - allowed or value.get("schema") != SCHEMA or value.get("run_id") != run_id:
         raise ProcessRegistryError("run ledger invalid")
-    if value.get("project") != str(project) or not isinstance(value.get("created_at"), str):
+    if not _same_real_directory(value.get("project"), project) or not isinstance(value.get("created_at"), str):
         raise ProcessRegistryError("run ledger invalid")
     entry_ids = value.get("entry_ids")
     if not isinstance(entry_ids, list) or len(entry_ids) != len(set(entry_ids)):
@@ -242,11 +294,13 @@ def _process_shape(value: object, *, required: bool = False) -> dict | None:
 
 def _validate_entry(value: dict, project: Path, run_id: str, entry_id: str) -> dict:
     allowed = {
-        "schema", "run_id", "entry_id", "owner", "purpose", "wrapper", "process",
+        "schema", "run_id", "entry_id", "project", "owner", "purpose", "wrapper", "process",
         "descendants", "descendant_snapshot", "started_at", "finished_at", "status",
         "exit_code", "error", "cleanup_status",
     }
     if set(value) - allowed or value.get("schema") != SCHEMA or value.get("run_id") != run_id or value.get("entry_id") != entry_id:
+        raise ProcessRegistryError("entry ledger invalid")
+    if "project" in value and not _same_real_directory(value.get("project"), project):
         raise ProcessRegistryError("entry ledger invalid")
     _text(value.get("owner"), "owner")
     _text(value.get("purpose"), "purpose")
@@ -588,6 +642,7 @@ def _new_entry(project: Path, run_id: str, owner: str, purpose: str, wrapper: di
             "schema": SCHEMA,
             "run_id": run_id,
             "entry_id": entry_id,
+            "project": str(project),
             "owner": owner,
             "purpose": purpose,
             "wrapper": wrapper,

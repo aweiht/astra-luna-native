@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — Unreleased
+
+- Rename the project and repository to Codex Adaptive Agents. Keep the existing
+  entry script, resource directory and managed role identifiers for in-place
+  upgrades from Astra / Luna Native.
+- Add self-contained installation, verification and upgrade prompts with the
+  canonical repository URL in both READMEs.
+- Validate supported prior release defaults during upgrades, preserve the
+  original pre-install values for uninstall, and reject user-edited conflicts
+  or unsupported receipt versions. Models still ship with each project release.
+
+- Restrict `recover` to interrupted transactions and require an explicit backup
+  for rollback; reject unsupported `--dry-run` requests before any command runs.
+- Resolve process-ledger case aliases by directory identity while rejecting
+  copied ledgers and redirected ledger metadata.
+- Validate backup ancestry before directory creation and reject malformed
+  receipt fields with structured errors.
+- Record ownership of newly created configuration files and empty tables so
+  uninstall removes only those without subsequent user content; retain safe
+  behavior for older receipts without these records.
+- Tie validation claims to the tested commit and separate published CI evidence
+  from later local regression checks.
 
 - Keep a fresh capability snapshot when the shared probe deadline expires,
   without extending its age; make `refresh --project` retry that project's
@@ -89,5 +110,5 @@ they are not requirements or live evidence for 0.4.0.
   cache support.
 - Added source and prebuilt release manifests with package checksums.
 
-The current 0.4.0 contract and package contents are defined by README.md,
+The current 0.5.0 contract and package contents are defined by README.md,
 docs/PUBLIC_GUIDE.md, and release-manifest.json.

@@ -63,7 +63,7 @@ def doctor(home, codex=None):
 
 
 def parser():
-    value = argparse.ArgumentParser(description='Astra/Luna Native: Python 3.11+, standard library only.')
+    value = argparse.ArgumentParser(description='Codex Adaptive Agents: Python 3.11+, standard library only.')
     value.add_argument('command', nargs='?', choices=('install', 'uninstall', 'recover', 'rollback',
         'doctor', 'select', 'refresh', 'verify', 'internal-smoke-check',
         'process-init', 'process-run', 'process-check', 'process-cleanup'))
@@ -72,10 +72,10 @@ def parser():
     value.add_argument('--codex', help='official Codex CLI path')
     value.add_argument('--project')
     value.add_argument('--output')
-    value.add_argument('--backup')
+    value.add_argument('--backup', help='recorded transaction path; required for rollback only')
     value.add_argument('--plan-id')
     value.add_argument('--yes', action='store_true', help='apply the managed, backed-up change')
-    value.add_argument('--dry-run', action='store_true')
+    value.add_argument('--dry-run', action='store_true', help='preview install or uninstall without applying')
     value.add_argument('--explain', action='store_true')
     value.add_argument('--live', action='store_true', help='use real Codex allowance for two native tasks')
     value.add_argument('--run-id', help='process handoff run returned by process-init')
@@ -112,8 +112,16 @@ def main(argv=None):
     home = Path(os.path.abspath(os.path.expanduser(args.codex_home or os.environ.get('CODEX_HOME') or '~/.codex')))
     try:
         command = args.command
+        # Reject incompatible safety flags before reading state or invoking any
+        # command boundary: a preview request must never perform a live action.
+        if args.dry_run and command not in ('install', 'uninstall'):
+            raise ValueError('--dry-run is only valid for install or uninstall')
         if args.yes and args.dry_run:
             raise ValueError('--yes and --dry-run cannot be combined')
+        if args.backup is not None and command != 'rollback':
+            raise ValueError('--backup is only valid for rollback')
+        if command == 'rollback' and not args.backup:
+            raise ValueError('rollback requires --backup PATH')
         if args.live and command != 'verify':
             raise ValueError('--live is only valid for verify')
         if child_argv is not None and command != 'process-run':

@@ -1,4 +1,4 @@
-## Astra / Luna 原生委派
+## Codex Adaptive Agents 原生委派
 
 你作为主 Agent 负责理解需求、制定方案、协调公共接口、检查证据和最终验收。默认主模型为 GPT-6 Astra；不在会话中自行替换用户指定的主模型。
 

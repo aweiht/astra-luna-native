@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and verify the public 0.4.0 Python source/runtime ZIP.
+"""Build and verify the public 0.5.0 Python source/runtime ZIP.
 
 The builder deliberately works from an explicit manifest. It never walks the
 repository as an implicit release allowlist, follows links, or replaces an
@@ -27,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VERSION_FILE = PROJECT_ROOT / "VERSION"
 MANIFEST_FILE = PROJECT_ROOT / "release-manifest.json"
 CHECKSUMS_NAME = "SHA256SUMS"
-EXPECTED_VERSION = "0.4.0"
+EXPECTED_VERSION = "0.5.0"
 PRIVATE_PATH_RE = re.compile(
     r"(?<![A-Za-z0-9_])/(?:Users|Volumes|private/var|home)/[^\s<>)\"']+"
 )
@@ -167,8 +167,8 @@ def load_manifest() -> dict[str, Any]:
         raise ReleaseError(f"manifest is missing required keys: {', '.join(missing)}")
     if type(manifest["schema_version"]) is not int or manifest["schema_version"] != 1:
         raise ReleaseError(f"unsupported manifest schema: {manifest['schema_version']!r}")
-    if manifest["project"] != "astra-luna-native":
-        raise ReleaseError("manifest project is not astra-luna-native")
+    if manifest["project"] != "codex-adaptive-agents":
+        raise ReleaseError("manifest project is not codex-adaptive-agents")
     if manifest["version"] != EXPECTED_VERSION:
         raise ReleaseError(f"manifest version must be {EXPECTED_VERSION}")
     try:
@@ -564,7 +564,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=PROJECT_ROOT / "dist" / "0.4.0-python",
+        default=PROJECT_ROOT / "dist" / "0.5.0-python",
         help="directory for the new ZIP and external SHA256SUMS",
     )
     return parser.parse_args(argv)

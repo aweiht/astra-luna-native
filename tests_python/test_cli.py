@@ -1,6 +1,6 @@
 """Real isolated Python entry lifecycle with fake public CLI/source data."""
 from datetime import datetime, timezone
-from contextlib import redirect_stdout
+from contextlib import ExitStack, redirect_stdout
 from io import StringIO
 import json
 import os
@@ -11,11 +11,61 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from astra_luna import cli, install, policy
+from astra_luna import cli, install, policy, process_registry, verify
 from astra_luna.platform import clean_env, run
 
 
 class CLITests(unittest.TestCase):
+    def test_invalid_safety_flags_reject_before_side_effects(self):
+        cases = [
+            (['verify', '--live', '--dry-run'], '--dry-run'),
+            (['refresh', '--dry-run'], '--dry-run'),
+            (['select', '--dry-run'], '--dry-run'),
+            (['doctor', '--dry-run'], '--dry-run'),
+            (['recover', '--yes', '--dry-run'], '--dry-run'),
+            (['rollback', '--backup', 'recorded', '--yes', '--dry-run'], '--dry-run'),
+            (['process-init', '--project', '.', '--dry-run'], '--dry-run'),
+            (['internal-smoke-check', '--project', '.', '--dry-run'], '--dry-run'),
+            (['recover', '--backup', 'recorded', '--yes'], '--backup'),
+            (['install', '--backup', 'recorded', '--yes'], '--backup'),
+            (['rollback', '--yes'], '--backup'),
+            (['rollback', '--backup', '', '--yes'], '--backup'),
+        ]
+        boundaries = [(install, 'validate'), (install, 'build'), (install, 'apply'),
+                      (install, 'recover'), (cli, 'resolve_codex'), (cli, 'doctor'),
+                      (policy, 'select'), (policy, 'refresh_capabilities'),
+                      (verify, 'run'), (verify, 'check'),
+                      (process_registry, 'init_run'), (tempfile, 'mkdtemp')]
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / 'must not be created'
+            for arguments, expected in cases:
+                with self.subTest(arguments=arguments), ExitStack() as stack:
+                    mocks = [stack.enter_context(patch.object(module, name))
+                             for module, name in boundaries]
+                    output = stack.enter_context(redirect_stdout(StringIO()))
+                    rc = cli.main(['--codex-home', str(home), *arguments])
+                    result = json.loads(output.getvalue())
+                    self.assertEqual(rc, 1)
+                    self.assertEqual(result['status'], 'ERROR')
+                    self.assertIn(expected, result['error'])
+                    for mocked in mocks:
+                        mocked.assert_not_called()
+                    self.assertFalse(home.exists())
+
+    def test_recovery_and_explicit_rollback_dispatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory).resolve() / 'home'
+            for command, backup in [('recover', None), ('rollback', 'recorded-backup')]:
+                with self.subTest(command=command), \
+                        patch.object(install, 'recover', return_value={'status': 'ROLLBACK_EXACT_PASS'}) as recover, \
+                        redirect_stdout(StringIO()) as output:
+                    arguments = ['--codex-home', str(home), command, '--yes']
+                    if backup:
+                        arguments += ['--backup', backup]
+                    self.assertEqual(cli.main(arguments), 0)
+                    self.assertEqual(json.loads(output.getvalue())['status'], 'ROLLBACK_EXACT_PASS')
+                    recover.assert_called_once_with(home, backup)
+
     def test_portable_moved_download_lifecycle(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve()

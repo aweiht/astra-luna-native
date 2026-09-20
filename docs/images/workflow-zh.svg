@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="590" viewBox="0 0 1280 590" role="img">
-<title>Astra Luna 使用流程</title>
+<title>Codex Adaptive Agents 使用流程</title>
 <rect width="1280" height="590" fill="#10171D"/>
-<text x="48" y="51" fill="#00FFCC" font-size="21" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">ASTRA / LUNA NATIVE</text>
+<text x="48" y="51" fill="#00FFCC" font-size="21" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">CODEX ADAPTIVE AGENTS</text>
 <text x="48" y="115" fill="#F3F7F9" font-size="40" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">安装一次，在 Codex 中工作，分层验证结果。</text>
 <text x="48" y="156" fill="#B9C8D2" font-size="23" font-family="Arial, Hiragino Sans GB, Microsoft YaHei, sans-serif">Python 3.11+  ·  官方 Codex CLI  ·  无需常驻服务</text>
 <rect x="48" y="203" width="384" height="290" rx="16" fill="#1A252E"/>

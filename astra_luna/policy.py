@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 from . import platform as _platform
 
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 RESOURCE = "astra-luna-native"
 MODEL_DIAL_URL = "https://modeldial.com/api/v1/radar/latest.json"
 DENG_URL = "https://api.codexradar.com/api/v1/intelligence-efficiency?v=20260823-trend-cohort-v1"

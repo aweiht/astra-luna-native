@@ -42,9 +42,204 @@ DESIRED = {'model':'"gpt-6-astra"', 'model_reasoning_effort':'"max"',
  'agents.default_subagent_reasoning_effort':'"max"',
  'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5'}
 
+# Receipt configuration is a compatibility contract, rather than a claim
+# that any model named by a receipt is acceptable.  These are literal snapshots
+# of defaults emitted by releases for which source evidence exists.  A
+# maintainer may add a future profile in source (and tests may temporarily add
+# one); receipt data never extends this table.
+VERSION_PROFILES = {
+    '0.3.0': {
+        'model':'"gpt-6-astra"', 'model_reasoning_effort':'"max"',
+        'agents.enabled':'true', 'agents.default_subagent_model':'"gpt-5.6-luna"',
+        'agents.default_subagent_reasoning_effort':'"max"',
+        'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5',
+    },
+    '0.4.0': {
+        'model':'"gpt-6-astra"', 'model_reasoning_effort':'"max"',
+        'agents.enabled':'true', 'agents.default_subagent_model':'"gpt-5.6-luna"',
+        'agents.default_subagent_reasoning_effort':'"max"',
+        'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5',
+    },
+    '0.5.0': {
+        'model':'"gpt-6-astra"', 'model_reasoning_effort':'"max"',
+        'agents.enabled':'true', 'agents.default_subagent_model':'"gpt-5.6-luna"',
+        'agents.default_subagent_reasoning_effort':'"max"',
+        'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5',
+    },
+}
+LEGACY_DEFAULTS = {
+    'model':'"gpt-6-astra"', 'model_reasoning_effort':'"max"',
+    'agents.enabled':'true', 'agents.default_subagent_model':'"gpt-5.6-luna"',
+    'agents.default_subagent_reasoning_effort':'"max"',
+    'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5',
+}
+VERSION_RE = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z')
+MISSING = object()
+
 
 def sha(data):
     return hashlib.sha256(data).hexdigest() if data is not None else None
+
+
+def _version_tuple(version):
+    if not isinstance(version, str):
+        raise ValueError('unsupported installation version')
+    match = VERSION_RE.fullmatch(version)
+    if not match:
+        raise ValueError('unsupported installation version')
+    return tuple(int(part) for part in match.groups())
+
+
+def _trusted_profile(version):
+    """Return a copy of a source-declared default profile.
+
+    The receipt's version is only a lookup key.  It is never allowed to carry
+    its own model/default values, which keeps an edited receipt from widening
+    the set of values accepted during validation.
+    """
+    _version_tuple(version)
+    profile = VERSION_PROFILES.get(version)
+    if not isinstance(profile, dict):
+        raise ValueError('unsupported installation version')
+    if not profile:
+        raise ValueError('invalid trusted default profile')
+    for key, literal in profile.items():
+        if key not in toml_edit.TYPES or not isinstance(literal, str):
+            raise ValueError('invalid trusted default profile')
+        try:
+            value = tomllib.loads('v=' + literal)['v']
+        except (KeyError, TypeError, ValueError, tomllib.TOMLDecodeError):
+            raise ValueError('invalid trusted default profile') from None
+        if type(value) is not toml_edit.TYPES[key]:
+            raise ValueError('invalid trusted default profile')
+        if toml_edit.TYPES[key] is int and value < 1:
+            raise ValueError('invalid trusted default profile')
+    return dict(profile)
+
+
+def _current_profile():
+    return _trusted_profile(__version__)
+
+
+def _receipt_profile(receipt):
+    """Resolve the trusted defaults used to create an existing receipt."""
+    schema = receipt['schema']
+    version = receipt.get('version')
+    if version is None:
+        # The historical schema-1/2 Python/Go installers had no version field.
+        # Their source declares the same Astra/Luna defaults, so this is a
+        # narrow schema-bound compatibility path rather than a current-default
+        # fallback.  Later schemas always wrote an explicit version.
+        if schema not in (1, 2):
+            raise ValueError('unsupported installation version')
+        return dict(LEGACY_DEFAULTS)
+    if not isinstance(version, str):
+        raise ValueError('unsupported installation version')
+    profile = _trusted_profile(version)
+    version_number = _version_tuple(version)
+    if schema < 3:
+        # No released schema-1/2 receipt carries a version.  Refuse a forged
+        # version rather than assigning it a profile based on receipt content.
+        raise ValueError('unsupported installation version for receipt schema')
+    if schema == 3 and version != '0.3.0':
+        raise ValueError('unsupported installation version for receipt schema')
+    if schema == 4 and version_number < (0, 4, 0):
+        raise ValueError('unsupported installation version for receipt schema')
+    return profile
+
+
+def _lookup(obj, key):
+    for part in key.split('.'):
+        if not isinstance(obj, dict) or part not in obj:
+            return MISSING
+        obj = obj[part]
+    return obj
+
+
+def _effective_desired(raw, profile, *, check_provider=True):
+    """Apply the historical concurrency-key shape rule to a profile."""
+    obj = tomllib.loads((raw or b'').decode('utf-8'))
+    if check_provider and obj.get('model_provider', 'openai') != 'openai':
+        raise ValueError('official openai provider required; existing provider preserved')
+    result = dict(profile)
+    agents = obj.get('agents', {})
+    if 'max_threads' not in agents:
+        result.pop('agents.max_threads', None)
+    if 'max_threads' in agents and 'max_concurrent_threads_per_session' not in agents:
+        result.pop('agents.max_concurrent_threads_per_session', None)
+    return result
+
+
+def _receipt_managed_keys(receipt, profile=None):
+    keys = receipt.get('managed_keys')
+    if keys is None:
+        return None
+    if not isinstance(keys, list):
+        raise ValueError('invalid managed configuration receipt')
+    if any(not isinstance(key, str) or key not in toml_edit.TYPES for key in keys):
+        raise ValueError('invalid managed configuration receipt')
+    if len(set(keys)) != len(keys):
+        raise ValueError('invalid managed configuration receipt')
+    if profile is not None:
+        allowed = set(profile)
+        concurrency = {'agents.max_threads', 'agents.max_concurrent_threads_per_session'} & allowed
+        required = allowed - concurrency
+        if (not set(keys) <= allowed or not required <= set(keys) or
+                (concurrency and not concurrency.intersection(keys))):
+            raise ValueError('invalid managed configuration receipt')
+    return list(keys)
+
+
+def _managed_keys(raw, receipt, profile):
+    stored = _receipt_managed_keys(receipt, profile)
+    if stored is not None:
+        required = set(_effective_desired(raw, profile, check_provider=False))
+        row_keys = {row['key'] for row in receipt.get('config_changes', [])}
+        if not required <= set(stored) or not row_keys <= set(stored):
+            raise ValueError('invalid managed configuration receipt')
+        return stored
+    rows = {row['key'] for row in receipt.get('config_changes', [])}
+    return sorted(rows | set(_effective_desired(raw, profile, check_provider=False)))
+
+
+def _validate_managed_config(raw, receipt, profile):
+    """Reject edits to every known managed key, including omitted rows."""
+    obj = tomllib.loads((raw or b'').decode('utf-8'))
+    keys = _managed_keys(raw, receipt, profile)
+    for key in keys:
+        if key not in profile:
+            raise ValueError('unsupported managed configuration key')
+        expected = tomllib.loads('v=' + profile[key])['v']
+        actual = _lookup(obj, key)
+        if actual is MISSING or type(actual) is not type(expected) or actual != expected:
+            raise ValueError('managed configuration changed')
+
+
+def _compose_changes(receipt, deltas):
+    """Carry original values through an upgrade while updating receipt afters."""
+    existing = {}
+    result = []
+    for row in receipt.get('config_changes', []):
+        copy = dict(row)
+        existing[copy['key']] = copy
+        result.append(copy)
+    for delta in deltas:
+        key = delta['key']
+        if key in existing:
+            existing[key]['after'] = delta['after']
+        else:
+            copy = dict(delta)
+            existing[key] = copy
+            result.append(copy)
+    return result
+
+
+def _check_upgrade_direction(receipt):
+    version = receipt.get('version')
+    if version is None:
+        return
+    if _version_tuple(__version__) < _version_tuple(version):
+        raise ValueError('installation downgrade unsupported')
 
 
 def legacy(schema):
@@ -83,25 +278,21 @@ def block_span(raw):
     return a, b
 
 
-def transform(raw, mode, desired=None, changes=None):
+def transform_result(raw, mode, desired=None, changes=None):
     result = toml_edit.run({'input': (raw or b'').decode('utf-8'), 'mode': mode,
                            'desired': desired or {}, 'changes': changes or []})
     if result['conflicts']:
         raise ValueError('managed configuration changed')
+    return result
+
+
+def transform(raw, mode, desired=None, changes=None):
+    result = transform_result(raw, mode, desired, changes)
     return result['output'].encode('utf-8'), result['changes']
 
 
-def desired(raw):
-    obj = tomllib.loads((raw or b'').decode('utf-8'))
-    if obj.get('model_provider', 'openai') != 'openai':
-        raise ValueError('official openai provider required; existing provider preserved')
-    result = dict(DESIRED)
-    agents = obj.get('agents', {})
-    if 'max_threads' not in agents:
-        result.pop('agents.max_threads')
-    if 'max_threads' in agents and 'max_concurrent_threads_per_session' not in agents:
-        result.pop('agents.max_concurrent_threads_per_session')
-    return result
+def desired(raw, profile=None):
+    return _effective_desired(raw, _current_profile() if profile is None else profile)
 
 
 def _same_real_directory(left, right):
@@ -143,11 +334,46 @@ def _same_real_directory(left, right):
     return os.path.normpath(os.fspath(left)).casefold() == os.path.normpath(os.fspath(right)).casefold()
 
 
+RECEIPT_METADATA = ('config_existed', 'agents_existed', 'created_config_tables',
+                    'config_after_sha256', 'agents_after_sha256')
+
+
+def receipt_metadata(receipt):
+    present = {key for key in RECEIPT_METADATA if key in receipt}
+    if not present:
+        return None
+    if present != set(RECEIPT_METADATA):
+        raise ValueError('invalid installation metadata')
+    if type(receipt['config_existed']) is not bool or type(receipt['agents_existed']) is not bool:
+        raise ValueError('invalid installation metadata')
+    tables = receipt['created_config_tables']
+    if not isinstance(tables, list):
+        raise ValueError('invalid installation metadata')
+    seen = set()
+    for row in tables:
+        if not isinstance(row, dict) or set(row) != {'name', 'separator'}:
+            raise ValueError('invalid installation metadata')
+        name, separator = row['name'], row['separator']
+        if (not isinstance(name, str) or name in seen or name not in ('agents', 'features') or
+                type(separator) is not int or separator not in (1, 2)):
+            raise ValueError('invalid installation metadata')
+        seen.add(name)
+    for key in ('config_after_sha256', 'agents_after_sha256'):
+        if (not isinstance(receipt[key], str) or
+                not re.fullmatch(r'[0-9a-f]{64}', receipt[key])):
+            raise ValueError('invalid installation metadata')
+    return dict(config_existed=receipt['config_existed'], agents_existed=receipt['agents_existed'],
+                created_config_tables=tables, config_after_sha256=receipt['config_after_sha256'],
+                agents_after_sha256=receipt['agents_after_sha256'])
+
+
 def load(home):
     raw = read(home / RESOURCE / 'install-manifest.json')
     if raw is None:
         return None
     receipt = loads(raw)
+    if not isinstance(receipt, dict):
+        raise ValueError('invalid installation receipt')
     schema = receipt.get('schema')
     recorded_home = receipt.get('codex_home')
     if (type(schema) is not int or schema not in (1, 2, 3, 4) or
@@ -158,6 +384,7 @@ def load(home):
         return None
     if receipt.get('status') != 'installed':
         raise ValueError('invalid receipt status')
+    profile = _receipt_profile(receipt)
     owned = receipt.get('owned_files', {})
     required = legacy(schema)
     if not isinstance(owned, dict):
@@ -172,20 +399,36 @@ def load(home):
         raise ValueError('invalid legacy receipt paths')
     if any(not isinstance(h, str) or not re.fullmatch('[0-9a-f]{64}', h) for h in owned.values()):
         raise ValueError('invalid receipt hash')
+    changes = receipt.get('config_changes', [])
+    if not isinstance(changes, list):
+        raise ValueError('invalid managed configuration receipt')
     seen = set()
-    for row in receipt.get('config_changes', []):
+    for row in changes:
+        if not isinstance(row, dict):
+            raise ValueError('invalid managed configuration receipt')
         key = row.get('key')
-        if key in seen or key not in DESIRED or row.get('after') != DESIRED[key]:
+        after = row.get('after')
+        if (not isinstance(key, str) or key in seen or key not in profile or
+                after != profile[key]):
             raise ValueError('invalid managed configuration receipt')
         seen.add(key)
         before = row.get('before')
         if before is not None:
-            value = tomllib.loads('v=' + before)['v']
+            if not isinstance(before, str):
+                raise ValueError('invalid original configuration type')
+            try:
+                value = tomllib.loads('v=' + before)['v']
+            except (KeyError, TypeError, ValueError, tomllib.TOMLDecodeError):
+                raise ValueError('invalid original configuration type') from None
             if type(value) is not toml_edit.TYPES[key]:
                 raise ValueError('invalid original configuration type')
     block = receipt.get('block', '')
-    if not block.startswith(f'<!-- BEGIN {MARKER} -->\n') or not block.endswith(f'\n<!-- END {MARKER} -->'):
+    if (not isinstance(block, str) or
+            not block.startswith(f'<!-- BEGIN {MARKER} -->\n') or
+            not block.endswith(f'\n<!-- END {MARKER} -->')):
         raise ValueError('invalid instruction receipt')
+    receipt_metadata(receipt)
+    _receipt_managed_keys(receipt, profile)
     return receipt
 
 
@@ -200,7 +443,9 @@ def validate(home):
     span = block_span(raw)
     if span is None or raw[slice(*span)].decode('utf-8') != receipt['block']:
         raise ValueError('managed instruction block changed')
-    transform(read(home / 'config.toml'), 'revert', changes=receipt['config_changes'])
+    config = read(home / 'config.toml')
+    _validate_managed_config(config, receipt, _receipt_profile(receipt))
+    transform(config, 'revert', changes=receipt['config_changes'])
     return receipt
 
 
@@ -257,24 +502,52 @@ def build(home, uninstall=False):
     if uninstall:
         if receipt is None:
             raise ValueError('not installed')
+        metadata = receipt_metadata(receipt)
         new_config, _ = transform(config, 'revert', changes=receipt['config_changes'])
         plan_changes = [dict(key=row['key'], before=row['after'], after=row['before'])
                         for row in receipt['config_changes']]
+        if metadata is not None:
+            cleaned_config = toml_edit.remove_created_tables(new_config.decode('utf-8'),
+                                                              metadata['created_config_tables']).encode('utf-8')
+            if (not metadata['config_existed'] and
+                    sha(config) == metadata['config_after_sha256'] and not cleaned_config):
+                new_config = None
+            else:
+                new_config = cleaned_config
         a, b = span
         if raw[b:b+1] == b'\n':
             b += 1
+        new_instructions = raw[:a] + raw[b:]
+        if (metadata is not None and not metadata['agents_existed'] and
+                sha(instructions) == metadata['agents_after_sha256'] and not new_instructions):
+            new_instructions = None
         add('config.toml', config, new_config)
-        add('AGENTS.md', instructions, raw[:a] + raw[b:])
+        add('AGENTS.md', instructions, new_instructions)
         for relative in sorted(receipt['owned_files']):
             add(relative, get(relative), None)
         next_receipt = dict(receipt, status='uninstalled')
     else:
-        new_config, changes = transform(config, 'merge', desired=desired(config))
-        plan_changes = list(changes)
+        current_profile = _current_profile()
         if receipt:
-            if changes:
-                raise ValueError('existing managed defaults changed')
-            changes = receipt['config_changes']
+            _check_upgrade_direction(receipt)
+        target_desired = desired(config, current_profile)
+        merge_result = transform_result(config or b'', 'merge', desired=target_desired)
+        new_config = merge_result['output'].encode('utf-8')
+        plan_changes = list(merge_result['changes'])
+        if receipt:
+            # ``validate`` checked the current file against the old profile.
+            # Merge deltas therefore describe only an approved version change;
+            # compose them with the old rows so uninstall still reaches the
+            # pre-first-install values.
+            changes = _compose_changes(receipt, merge_result['changes'])
+            prior_profile = _receipt_profile(receipt)
+            managed_keys = sorted(set(_managed_keys(config, receipt, prior_profile)) |
+                                  set(target_desired))
+            if any(key not in current_profile for key in managed_keys):
+                raise ValueError('managed configuration profile removed a prior key')
+        else:
+            changes = merge_result['changes']
+            managed_keys = sorted(target_desired)
         block_home = receipt.get('codex_home') if receipt else str(home)
         block = native_block(home, block_home)
         if span:
@@ -299,7 +572,28 @@ def build(home, uninstall=False):
             add(relative, before, data)
             owned[relative] = sha(data)
         next_receipt = dict(schema=4, version=__version__, status='installed', codex_home=block_home,
-                            config_changes=changes, block=block.decode('utf-8'), owned_files=owned)
+                            config_changes=changes, managed_keys=managed_keys,
+                            block=block.decode('utf-8'), owned_files=owned)
+        metadata = receipt_metadata(receipt) if receipt else None
+        if metadata is not None:
+            # Preserve the original installer ownership boundary when a user
+            # edited either file between installs.  Recompute the after hash
+            # only while the current file still matches the prior receipt.
+            config_after = (sha(new_config) if sha(config) == metadata['config_after_sha256']
+                            else metadata['config_after_sha256'])
+            agents_after = (sha(new_instructions) if sha(instructions) == metadata['agents_after_sha256']
+                            else metadata['agents_after_sha256'])
+            next_receipt.update(config_existed=metadata['config_existed'],
+                                agents_existed=metadata['agents_existed'],
+                                created_config_tables=metadata['created_config_tables'],
+                                config_after_sha256=config_after,
+                                agents_after_sha256=agents_after)
+        elif receipt is None:
+            next_receipt.update(config_existed=config is not None,
+                                agents_existed=instructions is not None,
+                                created_config_tables=merge_result['created_tables'],
+                                config_after_sha256=sha(new_config),
+                                agents_after_sha256=sha(new_instructions))
     add(RESOURCE + '/install-manifest.json', manifest, encode(next_receipt))
     summary = dict(mode='uninstall' if uninstall else 'install', codex_home=str(home),
        files=[dict(path=r['path'], before_sha256=sha(r['before']), after_sha256=sha(r['after']),
@@ -356,12 +650,19 @@ def restore(home, journal):
 
 def recover(home, backup=None):
     home = Path(os.path.abspath(home))
+    if backup is not None and os.fspath(backup) == '':
+        raise ValueError('explicit backup required')
     with file_lock(home / RESOURCE / 'install.lock'):
-        path = Path(backup) / 'transaction.json' if backup else home / RESOURCE / 'transaction.json'
+        path = (Path(backup) / 'transaction.json' if backup is not None
+                else home / RESOURCE / 'transaction.json')
         raw = read(path)
         if raw is None:
             raise ValueError('no recovery transaction')
         journal = loads(raw)
+        if not isinstance(journal, dict):
+            raise ValueError('invalid recovery transaction')
+        if backup is None and journal.get('status') == 'committed':
+            raise ValueError('committed transaction requires explicit backup rollback')
         restore(home, journal)
         return dict(status='ROLLBACK_EXACT_PASS', backup=journal['backup'])
 
@@ -375,6 +676,10 @@ def apply(home, expected, uninstall=False, *, _fail_after=-1):
         if not records:
             return dict(status='IDEMPOTENT_PASS', plan_id=expected)
         backup = home / RESOURCE / 'backups' / (str(time.time_ns()) + '-' + expected[:10])
+        # Check every existing ancestor before mkdir.  In particular this
+        # rejects a user-controlled backups symlink before it can create an
+        # outside directory or transaction artifact.
+        safe(backup)
         backup.mkdir(parents=True, mode=0o700)
         journal = dict(schema=1, status='applying', backup=str(backup), files=[])
         for index, row in enumerate(records):
