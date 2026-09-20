@@ -265,20 +265,24 @@ class ProcessRegistryTests(unittest.TestCase):
 
     def test_identity_mismatch_is_not_signalled_and_failed_cleanup_stays_visible(self):
         live = self._start_live("identity-mismatch")
-        entry = dict(live["entry"])
-        process = dict(entry["process"])
-        identity = dict(process["identity"])
-        if identity["kind"] == "linux":
-            identity["start_time"] += 1
-        elif identity["kind"] == "darwin":
-            identity["identity"] += 1
-        elif identity["kind"] == "windows":
-            identity["creation_time"] += 1
-        else:
-            self.skipTest("unsupported process identity kind")
-        process["identity"] = identity
-        entry["process"] = process
-        atomic(live["entry_path"], encode(entry))
+        # The live wrapper also reads this ledger.  Inject the stale identity
+        # under its run lock so Windows does not reject replacing an open file.
+        with process_registry._run_lock(self.project, live["run_id"]):
+            entry = self._read_json(live["entry_path"])
+            self.assertIsNotNone(entry)
+            process = dict(entry["process"])
+            identity = dict(process["identity"])
+            if identity["kind"] == "linux":
+                identity["start_time"] += 1
+            elif identity["kind"] == "darwin":
+                identity["identity"] += 1
+            elif identity["kind"] == "windows":
+                identity["creation_time"] += 1
+            else:
+                self.skipTest("unsupported process identity kind")
+            process["identity"] = identity
+            entry["process"] = process
+            atomic(live["entry_path"], encode(entry))
 
         result = self._invoke("process-cleanup", "--run-id", live["run_id"], expected=1)
         self.assertEqual(result["status"], "UNVERIFIED")
