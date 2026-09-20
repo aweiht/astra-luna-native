@@ -56,15 +56,20 @@ Run it with Python after the original download directory has been moved or
 removed:
 
 ~~~sh
-python3 "${CODEX_HOME:-$HOME/.codex}/astra-luna-native/runtime/astra-luna.py" doctor
-python3 "${CODEX_HOME:-$HOME/.codex}/astra-luna-native/runtime/astra-luna.py" uninstall --dry-run
+codex_home="${CODEX_HOME:-$HOME/.codex}"
+# If installation used --codex-home, use that same directory here.
+python3 "$codex_home/astra-luna-native/runtime/astra-luna.py" --codex-home "$codex_home" doctor
+python3 "$codex_home/astra-luna-native/runtime/astra-luna.py" --codex-home "$codex_home" uninstall --dry-run
 ~~~
 
 On Windows PowerShell:
 
 ~~~powershell
-py -3 "$env:USERPROFILE\.codex\astra-luna-native\runtime\astra-luna.py" doctor
-py -3 "$env:USERPROFILE\.codex\astra-luna-native\runtime\astra-luna.py" uninstall --dry-run
+$CodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
+# If installation used --codex-home, set $CodexHome to that same directory.
+$Entry = Join-Path $CodexHome "astra-luna-native\runtime\astra-luna.py"
+py -3 $Entry --codex-home $CodexHome doctor
+py -3 $Entry --codex-home $CodexHome uninstall --dry-run
 ~~~
 
 A successful uninstall removes the owned runtime and managed installation
@@ -87,8 +92,10 @@ python3 astra-luna.py refresh
 
 Each project keeps its policy cache in .astra-luna/state; projects should
 ignore .astra-luna/. A next-day delegation attempt can refresh an expired
-project policy. refresh updates the global public capability snapshot and
-home-level state; it does not immediately rewrite every project's cache.
+project policy. Use refresh --project /path/to/project to retry a blocked
+project immediately, including a failed attempt earlier that day. Without
+--project, refresh updates home-level policy state. Both forms refresh the
+global public capability snapshot and leave unrelated project caches intact.
 
 If public sources are unavailable, the selector retains a valid verified cache
 or uses the conservative supported max role when the local capability directory
@@ -144,6 +151,72 @@ For substantive work, record the delegation or direct-completion reason in one
 sentence in the plan or progress update and keep the existing compact execution
 footer. Do not create a separate delegation report file.
 
+## Temporary process and long command runs
+
+Ordinary short commands do not need a process run. Replace angle-bracket
+placeholders with the values passed by the root. If a work package needs a
+temporary service or a bounded long command, the root creates one isolated run
+and passes its `project`, `run_id`, entry point, owner, purpose, and resource or
+port boundary to each child:
+
+~~~sh
+codex_home="${CODEX_HOME:-$HOME/.codex}"
+entry="$codex_home/astra-luna-native/runtime/astra-luna.py"
+python3 "$entry" --codex-home "$codex_home" process-init --project /path/to/project
+python3 "$entry" --codex-home "$codex_home" process-run \
+  --project /path/to/project --run-id <run_id> --owner <owner> \
+  --purpose "<purpose>" -- <command> <arg>
+python3 "$entry" --codex-home "$codex_home" process-check \
+  --project /path/to/project --run-id <run_id>
+python3 "$entry" --codex-home "$codex_home" process-cleanup \
+  --project /path/to/project --run-id <run_id> [--retain <entry_id>,<entry_id>]
+~~~
+
+`process-init` prints the `run_id`. `process-run` is a foreground wrapper with
+a default 600-second timeout; it records the real process identity and purpose
+before starting, then flushes a startup event to stderr. It reclaims the command
+when it exits or times out and does not create a resident service. When the
+command completes, stdout contains one JSON object. `process-run` is
+non-interactive: stdin is closed, combined command stdout and stderr are capped
+at 2 MiB, `--timeout` defaults to 600 seconds and accepts at most 86400 seconds,
+and captured command output is returned in the completion JSON. While it is
+running, read an independent snapshot with `process-check` in another window;
+do not treat ordinary startup text as the ledger. A child reports its `entry_id` and PID from
+the startup event or that snapshot, along with purpose and validation, promptly;
+it must not wait for the completion JSON. It stops its own execution session or
+command. If a task explicitly authorizes a retained service, report it as
+`RETAINED` with its purpose; a run with retained
+entries is not `CLEAN`.
+
+After every participant has stopped starting commands, the root performs the
+independent final `process-check` and `process-cleanup`, then runs a second
+`process-check` to confirm the post-cleanup state. Cleanup closes the run and
+rejects new commands, so a child must not clean up a shared run. A retained
+entry may be checked or cleaned again later in the same run, but that does not
+permit a new command. If a child needs to stop its own entry early, stop its
+execution wrapper or report it to the root; do not teach it to kill arbitrary
+PIDs. This ledger is scoped to the work package. It does not scan every process
+on the machine and is not a host-enforced prompt policy.
+
+Pass the same `--retain` list to the final check when keeping a service.
+`CLEAN` confirms that registered processes have stopped; it does not prove the
+command or work package succeeded. `DIRTY` means a registered process remains
+active, and `UNVERIFIED` means cleanup could not be confirmed. Check and cleanup
+return a nonzero exit code for either of those states. An explicitly retained
+service remains subject to its original command timeout.
+
+On Windows PowerShell, use the same Codex home and replace `python3` with
+`py -3`:
+
+~~~powershell
+$CodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
+$Entry = Join-Path $CodexHome "astra-luna-native\runtime\astra-luna.py"
+py -3 $Entry --codex-home $CodexHome process-init --project C:\path\to\project
+py -3 $Entry --codex-home $CodexHome process-run --project C:\path\to\project --run-id <run_id> --owner <owner> --purpose "<purpose>" -- <command> <arg>
+py -3 $Entry --codex-home $CodexHome process-check --project C:\path\to\project --run-id <run_id>
+py -3 $Entry --codex-home $CodexHome process-cleanup --project C:\path\to\project --run-id <run_id> [--retain <entry_id>,<entry_id>]
+~~~
+
 ## Live verification
 
 verify --live is explicit, uses real Codex allowance, and starts at most two
@@ -163,6 +236,26 @@ client-effective, and server-reported model metadata separate when the official
 client exposes those values. The independent verifier checks child roles,
 scope, hashes, and smoke contracts; a successful process exit alone does not
 prove the task result.
+
+## Process cleanup boundary
+
+The transient client channel is bounded. Windows assigns descendants to a Job
+Object. Linux uses a short-lived Python subreaper per command so detached
+orphans are still cleaned up. macOS tracks process birth and original-parent
+identifiers and cleans up observed descendants even after `setsid` or a parent
+exit. A separate cleanup acknowledgement is required before success is reported;
+a timeout or supervision failure is not a successful verification.
+
+The original-parent-version field is used only after a live parent/child
+capability check. Older macOS versions fall back to birth identities and the
+command process group; a detached child whose parent exits before observation
+may be missed. On every macOS version, a short-lived intermediary that forks
+and is reaped between snapshots can hide deeper lineage. This is not
+kernel-enforced containment.
+Use the official Codex sandbox for untrusted task code; this process helper is
+not a replacement sandbox. It is created only for a command and exits with it,
+not an installed service. Current platform-specific test evidence is recorded
+in [VALIDATION.md](VALIDATION.md).
 
 ## Recovery and uninstall
 

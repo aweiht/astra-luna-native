@@ -1,42 +1,7 @@
 name: native-release-python
 
-on:
-  push:
-    paths:
-      - ".github/workflows/native.yml"
-      - "README.md"
-      - "LICENSE"
-      - "NOTICE"
-      - "SECURITY.md"
-      - "CONTRIBUTING.md"
-      - "CHANGELOG.md"
-      - "VERSION"
-      - "release-manifest.json"
-      - "astra-luna.py"
-      - "astra_luna/**"
-      - "tests_python/**"
-      - "scripts/release_python.py"
-      - "docs/PUBLIC_GUIDE.md"
-      - "docs/VALIDATION.md"
-      - "docs/UPSTREAM.md"
-  pull_request:
-    paths:
-      - ".github/workflows/native.yml"
-      - "README.md"
-      - "LICENSE"
-      - "NOTICE"
-      - "SECURITY.md"
-      - "CONTRIBUTING.md"
-      - "CHANGELOG.md"
-      - "VERSION"
-      - "release-manifest.json"
-      - "astra-luna.py"
-      - "astra_luna/**"
-      - "tests_python/**"
-      - "scripts/release_python.py"
-      - "docs/PUBLIC_GUIDE.md"
-      - "docs/VALIDATION.md"
-      - "docs/UPSTREAM.md"
+# Validate every published change, including docs, images and ignore rules.
+on: [push, pull_request]
 
 permissions:
   contents: read

@@ -9,10 +9,20 @@ from astra_luna import transport
 class TransportTests(unittest.TestCase):
     def test_metadata_drops_content_and_preserves_native_lineage(self):
         result = transport.metadata({'id':'child','parentThreadId':'root','agentRole':'adaptive_luna_max',
-            'preview':'must not persist','turns':['must not persist'],'status':{'type':'idle','extra':'private'},
+            'model':'gpt-5.6-luna','reasoningEffort':'max','modelProvider':'openai',
+            'preview':'must not persist','turns':['must not persist'],'sessionId':'must not persist',
+            'status':{'type':'idle','extra':'private'},
+            'effective':{'model':'gpt-5.6-luna','reasoningEffort':'max','prompt':'must not persist'},
+            'requested':{'model':'gpt-5.6-luna','reasoningEffort':'max','token':'must not persist'},
             'source':{'subagent':{'thread_spawn':{'parent_thread_id':'root','agent_role':'adaptive_luna_max','depth':1,'prompt':'private'}}}})
         self.assertNotIn('preview', result)
         self.assertNotIn('turns', result)
+        self.assertNotIn('sessionId', result)
+        self.assertEqual(result['model'], 'gpt-5.6-luna')
+        self.assertEqual(result['reasoningEffort'], 'max')
+        self.assertEqual(result['modelProvider'], 'openai')
+        self.assertEqual(result['effective'], {'model':'gpt-5.6-luna','reasoningEffort':'max'})
+        self.assertEqual(result['requested'], {'model':'gpt-5.6-luna','reasoningEffort':'max'})
         self.assertEqual(result['spawn'],dict(parent_thread_id='root',agent_role='adaptive_luna_max',depth=1))
         self.assertEqual(result['status'], {'type':'idle'})
 

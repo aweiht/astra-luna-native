@@ -15,6 +15,20 @@ from . import __version__, install
 from .platform import atomic, clean_env, encode, finish, loads, read, run as run_process, safe, spawn, stop
 
 
+_PUBLIC_EFFECTIVE_KEYS = ('model', 'modelProvider', 'provider', 'reasoningEffort', 'reasoning_effort')
+
+
+def _safe_public_effective(value):
+    if not isinstance(value, dict):
+        return {}
+    result = {}
+    for key in _PUBLIC_EFFECTIVE_KEYS:
+        item = value.get(key)
+        if isinstance(item, (str, int, float, bool)) or (item is None and key in value):
+            result[key] = item
+    return result
+
+
 def metadata(thread):
     result = {k: thread[k] for k in ('id', 'parentThreadId', 'agentRole') if k in thread}
     status = thread.get('status', {})
@@ -24,6 +38,12 @@ def metadata(thread):
     birth = thread.get('spawn') or (child.get('thread_spawn') if isinstance(child, dict) else None)
     if isinstance(birth, dict):
         result['spawn'] = {k: birth.get(k) for k in ('parent_thread_id', 'agent_role', 'depth')}
+    for key, value in _safe_public_effective(thread).items():
+        result[key] = value
+    for name in ('effective', 'requested'):
+        values = _safe_public_effective(thread.get(name))
+        if values:
+            result[name] = values
     return result
 
 

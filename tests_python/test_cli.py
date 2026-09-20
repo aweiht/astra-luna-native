@@ -1,5 +1,7 @@
 """Real isolated Python entry lifecycle with fake public CLI/source data."""
 from datetime import datetime, timezone
+from contextlib import redirect_stdout
+from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -7,8 +9,9 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from astra_luna import install
+from astra_luna import cli, install, policy
 from astra_luna.platform import clean_env, run
 
 
@@ -79,6 +82,25 @@ runpy.run_path(entry,run_name='__main__')
             self.assertEqual(ready['status'], 'READY_FALLBACK')
             project = base / 'project space'
             project.mkdir()
+            # The installed entry retains process handoff after the download
+            # moves; worker argv after -- is never parsed as installer flags.
+            handoff = invoke(entry, 'process-init', '--project', str(project))
+            run_id = handoff['run_id']
+            command = invoke(entry, 'process-run', '--project', str(project),
+                             '--run-id', run_id, '--owner', 'cli-test',
+                             '--purpose', 'installed handoff verification', '--',
+                             sys.executable, '-c',
+                             'import sys; assert sys.argv[1:] == ["--yes", "--yes"]; print("handoff-ok")',
+                             '--yes', '--yes')
+            self.assertEqual(command['status'], 'SUCCESS')
+            checked = invoke(entry, 'process-check', '--project', str(project), '--run-id', run_id)
+            self.assertEqual(checked['status'], 'CLEAN')
+            self.assertEqual(invoke(entry, 'process-cleanup', '--project', str(project),
+                                    '--run-id', run_id)['status'], 'CLEAN')
+            rejected = invoke(entry, 'process-run', '--project', str(project), '--run-id', run_id,
+                              '--owner', 'late', '--purpose', 'must reject a closed run', '--',
+                              sys.executable, '-c', 'raise RuntimeError("must not execute")', expect=1)
+            self.assertEqual(rejected['status'], 'ERROR')
             selected = invoke(entry, 'select', '--project', str(project), '--explain')
             self.assertEqual(selected['role'], 'adaptive_luna_max')
             self.assertFalse(invoke(entry, 'select', '--project', str(project), '--explain')['refreshed'])
@@ -87,6 +109,98 @@ runpy.run_path(entry,run_name='__main__')
             self.assertEqual(invoke(entry, 'uninstall', '--yes')['status'], 'UNINSTALLED')
             self.assertFalse(entry.exists())
             self.assertIn('# keep', (home / 'config.toml').read_text(encoding='utf-8'))
+
+    def test_project_refresh_recovers_same_day_failure_without_touching_other_project(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            home = base / 'codex home'
+            project = base / 'project'
+            other_project = base / 'other project'
+            home.mkdir()
+            project.mkdir()
+            other_project.mkdir()
+            now = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
+            fake_codex = base / 'codex'
+            fake_codex.write_text('', encoding='utf-8')
+            fake_codex.chmod(0o755)
+
+            with patch.dict(os.environ, {'TZ': 'UTC'}, clear=False), \
+                    patch.object(policy, 'FetchSources', return_value=[]), \
+                    patch.object(policy, 'DirectSupportedEfforts',
+                                 side_effect=policy.PolicyError('catalog unavailable')):
+                first = policy.select(home, project, now=now)
+            self.assertEqual(first['status'], 'blocked')
+
+            with patch.dict(os.environ, {'TZ': 'UTC'}, clear=False), \
+                    patch.object(policy, 'FetchSources', return_value=[]), \
+                    patch.object(policy, 'DirectSupportedEfforts', return_value=list(policy.EFFORTS)):
+                other = policy.select(home, other_project, now=now)
+            self.assertEqual(other['role'], 'adaptive_luna_max')
+            other_cache = other_project / '.astra-luna/state/policy-cache.json'
+            other_before = other_cache.read_bytes()
+
+            snapshot = {
+                'schema': 1,
+                'checked_at': policy._stamp(now),
+                'supported_efforts': list(policy.EFFORTS),
+                'root_model': 'gpt-6-astra',
+                'codex': str(fake_codex),
+                'cli_version': 'codex-cli 0.147.0',
+                'evidence': 'public_client_catalogue',
+            }
+
+            def fake_refresh(selected_home, _codex, *, now=None):
+                resource = Path(selected_home) / policy.RESOURCE
+                resource.mkdir(parents=True, exist_ok=True)
+                policy._atomic(policy._snapshot_path(Path(selected_home)),
+                               policy._encode(snapshot))
+                return snapshot
+
+            calls = []
+            original_select = policy.select
+            fixed_now = now
+
+            def fixed_clock_select(selected_home, selected_project=None, *, force=False, now=None):
+                calls.append({
+                    'home': str(selected_home),
+                    'project': None if selected_project is None else str(selected_project),
+                    'force': force,
+                })
+                return original_select(selected_home, selected_project, force=force,
+                                       now=now if now is not None else fixed_now)
+
+            output = StringIO()
+            with patch.dict(os.environ, {'TZ': 'UTC'}, clear=False), \
+                    patch.object(install, 'validate', return_value={'schema': 4}), \
+                    patch.object(cli, 'resolve_codex', return_value=str(fake_codex)), \
+                    patch.object(policy, 'refresh_capabilities', side_effect=fake_refresh), \
+                    patch.object(policy, 'DirectSupportedEfforts', return_value=list(policy.EFFORTS)), \
+                    patch.object(policy, 'FetchSources', return_value=[]), \
+                    patch.object(policy, 'select', side_effect=fixed_clock_select), \
+                    redirect_stdout(output):
+                refresh_rc = cli.main([
+                    '--codex-home', str(home),
+                    'refresh',
+                    '--project', str(project),
+                ])
+
+            self.assertEqual(refresh_rc, 0)
+            self.assertEqual(json.loads(output.getvalue())['role'], 'adaptive_luna_max')
+            self.assertEqual(calls, [{
+                'home': str(home),
+                'project': str(project),
+                'force': True,
+            }])
+            self.assertFalse((home / policy.RESOURCE / 'state/policy-cache.json').exists())
+            self.assertEqual(other_cache.read_bytes(), other_before)
+
+            with patch.dict(os.environ, {'TZ': 'UTC'}, clear=False), \
+                    patch.object(policy, 'FetchSources', return_value=[]), \
+                    patch.object(policy, 'DirectSupportedEfforts',
+                                 side_effect=AssertionError('same-day select must use project cache')):
+                recovered = original_select(home, project, now=now)
+            self.assertEqual(recovered['role'], 'adaptive_luna_max')
+            self.assertFalse(recovered['refreshed'])
 
 
 if __name__ == '__main__':

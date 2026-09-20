@@ -951,6 +951,7 @@ def _native_inputs(home: Path, snapshot: dict | None, now: datetime) -> tuple[li
     output: dict[str, object] = {"sources": None, "efforts": None,
                                  "capabilities_at": None, "fallback": False}
     guard = threading.Lock()
+    closed = False
     deadline = _clock.monotonic() + SOURCE_TIMEOUT
     # A snapshot normally carries the installer-resolved absolute executable.
     # Cold installs have no snapshot yet, so retain the public CLI contract's
@@ -962,19 +963,57 @@ def _native_inputs(home: Path, snapshot: dict | None, now: datetime) -> tuple[li
         codex = ""
 
     def put(key: str, value: object) -> None:
+        nonlocal closed
         with guard:
+            # A worker may still be unwinding a subprocess after the shared
+            # budget expires. Once the coordinator closes the result, a late
+            # worker must not write half of a capability/source observation.
+            if closed or _clock.monotonic() >= deadline:
+                return
             output[key] = value
 
-    def source_worker() -> None:
+    def put_capability(efforts: list[str]) -> None:
+        nonlocal closed
+        with guard:
+            if closed or _clock.monotonic() >= deadline:
+                return
+            output.update({"efforts": _canonical_efforts(efforts),
+                           "capabilities_at": _stamp(now), "fallback": False})
+
+    def budget_open() -> bool:
+        with guard:
+            return not closed and _clock.monotonic() < deadline
+
+    def snapshot_fallback() -> tuple[list[str], str] | None:
+        """Return only a still-fresh snapshot fallback with its original age."""
+        if not isinstance(snapshot, dict) or not snapshot.get("fallback_allowed"):
+            return None
+        efforts = snapshot.get("supported_efforts")
+        checked = snapshot.get("checked_at")
+        if not _valid_efforts(efforts) or not isinstance(checked, str):
+            return None
         try:
-            remaining = max(0.01, deadline - _clock.monotonic())
+            checked_at = _time(checked, required=True)
+        except PolicyError:
+            return None
+        if checked_at > now or now - checked_at > CAPABILITY_MAX_AGE:
+            return None
+        return _canonical_efforts(efforts), _stamp(checked_at)
+
+    def source_worker() -> None:
+        if not budget_open():
+            return
+        try:
+            remaining = deadline - _clock.monotonic()
+            if remaining <= 0:
+                return
             put("sources", FetchSources(now, remaining))
         except Exception:
             put("sources", None)
 
     def capability_worker() -> None:
         efforts = None
-        if codex:
+        if codex and budget_open():
             try:
                 # Call the exported function so tests/adapters can replace the
                 # public capability probe without touching subprocess internals.
@@ -982,16 +1021,9 @@ def _native_inputs(home: Path, snapshot: dict | None, now: datetime) -> tuple[li
             except Exception:
                 efforts = None
         if isinstance(efforts, list) and _valid_efforts(efforts):
-            put("efforts", _canonical_efforts(efforts))
-            put("capabilities_at", _stamp(now))
-            return
-        if isinstance(snapshot, dict) and snapshot.get("fallback_allowed"):
-            fallback = snapshot.get("supported_efforts")
-            checked = snapshot.get("checked_at")
-            if _valid_efforts(fallback) and isinstance(checked, str):
-                put("efforts", _canonical_efforts(fallback))
-                put("capabilities_at", _stamp(_time(checked, required=True)))
-                put("fallback", True)
+            # Keep all capability fields as one atomic result. This prevents
+            # the coordinator from observing efforts without their timestamp.
+            put_capability(efforts)
 
     threads = [
         threading.Thread(target=source_worker, name="policy-sources", daemon=True),
@@ -1000,20 +1032,37 @@ def _native_inputs(home: Path, snapshot: dict | None, now: datetime) -> tuple[li
     for thread in threads:
         thread.start()
     for thread in threads:
-        thread.join(max(0.0, deadline - _clock.monotonic()))
-    sources = output.get("sources")
+        remaining = deadline - _clock.monotonic()
+        if remaining <= 0:
+            break
+        thread.join(remaining)
+
+    # Close and snapshot the shared result under the same lock used by worker
+    # writes. A capability probe that is still in its inner CLI timeout/cleanup
+    # cannot replace the fresh snapshot fallback after this point.
+    with guard:
+        closed = True
+        if not (isinstance(output.get("efforts"), list) and
+                _valid_efforts(output.get("efforts"))):
+            fallback = snapshot_fallback()
+            if fallback is not None:
+                output.update({"efforts": fallback[0],
+                               "capabilities_at": fallback[1], "fallback": True})
+        sources = output.get("sources")
+        efforts = output.get("efforts")
+        capability_at = output.get("capabilities_at")
+        capability_fallback = bool(output.get("fallback"))
+
     if not isinstance(sources, list):
         sources = [_source("modeldial", url=MODEL_DIAL_URL, now=now,
                            problems=["public source unavailable"]),
                    _source("deng", url=DENG_URL, now=now,
                            problems=["public source unavailable"])]
-    efforts = output.get("efforts")
     if not isinstance(efforts, list) or not _valid_efforts(efforts):
         efforts = []
-    capability_at = output.get("capabilities_at")
     if not isinstance(capability_at, str):
         capability_at = _stamp(None)
-    return sources, efforts, capability_at, bool(output.get("fallback"))
+    return sources, efforts, capability_at, capability_fallback
 
 
 def select(home: Path, project: Path | None = None, *, force: bool = False, now: datetime | None = None) -> dict:

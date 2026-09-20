@@ -20,8 +20,18 @@ MARKER = 'ASTRA_LUNA_NATIVE'
 EFFORTS = ('low', 'medium', 'high', 'xhigh', 'max')
 RUNTIME_FILES = ('astra-luna.py', 'astra_luna/__init__.py', 'astra_luna/cli.py',
  'astra_luna/install.py', 'astra_luna/toml_edit.py', 'astra_luna/platform.py',
- 'astra_luna/policy.py', 'astra_luna/verify.py', 'astra_luna/transport.py', 'astra_luna/assets/parent.md',
+ 'astra_luna/policy.py', 'astra_luna/verify.py', 'astra_luna/transport.py', 'astra_luna/process_tree.py',
+ 'astra_luna/process_registry.py',
+ 'astra_luna/assets/parent.md',
  'astra_luna/assets/leaf.md', 'astra_luna/assets/contract.md',
+ 'astra_luna/assets/normalize_tags.py', 'astra_luna/assets/unique_numbers.py')
+# The public 0.4.0 schema-4 receipt predates the process supervisor and registry.
+# This complete baseline is required for upgrades; extra files must still belong
+# to the known owned_paths set. New receipts include all current RUNTIME_FILES.
+PREVIOUS_SCHEMA4_RUNTIME = ('astra-luna.py', 'astra_luna/__init__.py', 'astra_luna/cli.py',
+ 'astra_luna/install.py', 'astra_luna/toml_edit.py', 'astra_luna/platform.py',
+ 'astra_luna/policy.py', 'astra_luna/verify.py', 'astra_luna/transport.py',
+ 'astra_luna/assets/parent.md', 'astra_luna/assets/leaf.md', 'astra_luna/assets/contract.md',
  'astra_luna/assets/normalize_tags.py', 'astra_luna/assets/unique_numbers.py')
 LEGACY_RUNTIME = ('astra-luna', 'VERSION', 'scripts/native.py', 'scripts/install_native.py',
  'scripts/native_smoke.py', 'scripts/verify_native_events.py', 'internal/configmerge/toml_edit.py',
@@ -52,6 +62,12 @@ def legacy(schema):
 
 def owned_paths():
     return legacy(2) | legacy(3) | legacy(4)
+
+
+def previous_schema4():
+    result = {f'agents/adaptive_luna_{e}.toml' for e in EFFORTS}
+    result.update(RESOURCE + '/runtime/' + p for p in PREVIOUS_SCHEMA4_RUNTIME)
+    return result
 
 
 def block_span(raw):
@@ -88,13 +104,55 @@ def desired(raw):
     return result
 
 
+def _same_real_directory(left, right):
+    """Accept only an existing, non-link directory identity with a case alias."""
+    left, right = Path(left), Path(right)
+    if not left.is_absolute() or not right.is_absolute():
+        return False
+    def has_link_component(path):
+        current = Path(path.anchor)
+        for part in path.parts[1:]:
+            current /= part
+            try:
+                info = current.lstat()
+            except (OSError, ValueError):
+                return False
+            if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+                return True
+        return False
+    if has_link_component(left) or has_link_component(right):
+        return False
+    try:
+        left_info, right_info = left.lstat(), right.lstat()
+    except (OSError, ValueError):
+        return False
+    if any(stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400
+           for info in (left_info, right_info)):
+        return False
+    if not stat.S_ISDIR(left_info.st_mode) or not stat.S_ISDIR(right_info.st_mode):
+        return False
+    try:
+        same_identity = os.path.samefile(left, right)
+    except (OSError, ValueError):
+        return False
+    if not same_identity:
+        return False
+    # The identity check above is the platform-sensitive gate.  This second
+    # check keeps ``samefile`` from broadening the receipt contract to an
+    # arbitrary spelling such as a different path reached through ``..``.
+    return os.path.normpath(os.fspath(left)).casefold() == os.path.normpath(os.fspath(right)).casefold()
+
+
 def load(home):
     raw = read(home / RESOURCE / 'install-manifest.json')
     if raw is None:
         return None
     receipt = loads(raw)
     schema = receipt.get('schema')
-    if type(schema) is not int or schema not in (1, 2, 3, 4) or receipt.get('codex_home') != str(home):
+    recorded_home = receipt.get('codex_home')
+    if (type(schema) is not int or schema not in (1, 2, 3, 4) or
+            type(recorded_home) is not str or
+            (recorded_home != str(home) and not _same_real_directory(Path(recorded_home), home))):
         raise ValueError('invalid installation receipt')
     if receipt.get('status') == 'uninstalled':
         return None
@@ -102,7 +160,13 @@ def load(home):
         raise ValueError('invalid receipt status')
     owned = receipt.get('owned_files', {})
     required = legacy(schema)
-    if not isinstance(owned, dict) or not required <= set(owned) <= owned_paths():
+    if not isinstance(owned, dict):
+        raise ValueError('invalid receipt paths')
+    owned_keys = set(owned)
+    if not required <= owned_keys:
+        if schema != 4 or not previous_schema4() <= owned_keys:
+            raise ValueError('invalid receipt paths')
+    if not owned_keys <= owned_paths():
         raise ValueError('invalid receipt paths')
     if schema < 3 and set(owned) != required:
         raise ValueError('invalid legacy receipt paths')
@@ -140,9 +204,10 @@ def validate(home):
     return receipt
 
 
-def native_block(home):
+def native_block(home, codex_home=None):
     template = read(ROOT / 'astra_luna/assets/parent.md').decode('utf-8')
-    invocation = command_text([sys.executable, '-I', '-B', str(home / ENTRY), '--codex-home', str(home)])
+    block_home = Path(codex_home) if codex_home is not None else Path(home)
+    invocation = command_text([sys.executable, '-I', '-B', str(block_home / ENTRY), '--codex-home', str(block_home)])
     project_arg = '.'
     content = template.replace('{{COMMAND}}', invocation).replace('{{PROJECT}}', project_arg)
     return (f'<!-- BEGIN {MARKER} -->\n' + content.strip() + f'\n<!-- END {MARKER} -->').encode('utf-8')
@@ -210,7 +275,8 @@ def build(home, uninstall=False):
             if changes:
                 raise ValueError('existing managed defaults changed')
             changes = receipt['config_changes']
-        block = native_block(home)
+        block_home = receipt.get('codex_home') if receipt else str(home)
+        block = native_block(home, block_home)
         if span:
             a, b = span
             new_instructions = raw[:a] + block + raw[b:]
@@ -232,7 +298,7 @@ def build(home, uninstall=False):
                 raise ValueError('unowned installation destination: ' + relative)
             add(relative, before, data)
             owned[relative] = sha(data)
-        next_receipt = dict(schema=4, version=__version__, status='installed', codex_home=str(home),
+        next_receipt = dict(schema=4, version=__version__, status='installed', codex_home=block_home,
                             config_changes=changes, block=block.decode('utf-8'), owned_files=owned)
     add(RESOURCE + '/install-manifest.json', manifest, encode(next_receipt))
     summary = dict(mode='uninstall' if uninstall else 'install', codex_home=str(home),
@@ -249,7 +315,7 @@ def restore(home, journal):
     if journal.get('schema') != 1 or journal.get('status') not in ('applying', 'committed'):
         raise ValueError('invalid or already recovered transaction')
     backup = Path(journal['backup'])
-    if backup.parent != home / RESOURCE / 'backups':
+    if not _same_real_directory(backup.parent, home / RESOURCE / 'backups'):
         raise ValueError('backup outside managed installation')
     safe(backup / 'transaction.json')
     allowed = owned_paths() | {'config.toml', 'AGENTS.md', RESOURCE + '/install-manifest.json'}

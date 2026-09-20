@@ -7,3 +7,17 @@
 自然语言交付末尾只附一行简短尾注，例如 `Luna: luna_max · leaf · children ×0`，按主控明确提供的角色/模型/档位填写，未知写 unknown；不加标题、表格、分隔线或逐项展开。模型短名表示客户端或请求配置，不冒充服务端身份证明。不猜测根任务的其他子 Agent 数量，根任务总数由主控汇总。严格 JSON/固定 schema 输出不追加未允许的字段或尾注。
 
 自身模型和思考档位优先采用本次派发参数、公开工具元数据或已加载角色中明确的 `model` / `model_reasoning_effort`；已有这些配置时不要仅因缺少服务端回报就写 unknown。确实缺少本次执行角色信息时才写 unknown，不能拿全局主 Agent 的默认档位替代本叶子档位。
+
+## Agent 与临时进程边界
+
+需要新增 Agent 时，只向主 Agent 报告目标、收益和依赖，由主 Agent 决定是否启动；不要自行创建 Agent、运行选档脚本或向下委派。
+
+需要临时后台服务或较长命令时，等待主 Agent 传入当前工作包的 `project`、`run_id`、运行入口、owner、用途和资源/端口边界，再使用前台包装器：
+
+```text
+<ENTRY> process-run --project <PROJECT> --run-id <RUN_ID> --owner <OWNER> --purpose "<PURPOSE>" -- <command> <arg>
+```
+
+`process-run` 默认超时 600 秒，命令结束或超时会回收自己的进程；脚本本身不建立新的常驻服务。包装器在启动前登记真实进程身份和用途，并立即向 stderr 刷新启动事件；命令完成时 stdout 输出一个 JSON 对象。启动事件或 `process-check` 可提供 `entry_id` 和 PID；拿到后尽快向主 Agent 报告它们、用途和验证状态，不要等工作包结束或最终 JSON 才登记。需要查看运行状态时报告主 Agent，在另一个窗口读取 `process-check` 快照；不要按 PID 任意杀进程。普通短命令没有后台进程时，不需要 `process-init`。
+
+完成工作包前主动停止自己的执行会话和命令，并报告实际进程、验证结果以及明确保留的用途。主 Agent 等所有参与者停止写入后负责本轮独立 `process-check` 和 `process-cleanup`，清理后再执行一次 `process-check` 确认状态；叶子不要清理共享批次。经任务明确授权而保留的服务要报告为 `RETAINED`，不能把它写成 `CLEAN`。保留项可以在同一个 run 中日后再次检查和清理，但不能借此新增命令。登记记录说明本次工作包，不保证发现机器上所有未登记进程，也不是宿主强制执行机制。

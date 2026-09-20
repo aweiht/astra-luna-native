@@ -188,7 +188,11 @@ def spawn(argv, *, cwd=None, env=None):
     else:
         options["start_new_session"] = True
     try:
-        proc = subprocess.Popen(argv, **options)
+        if os.name == 'nt':
+            proc = subprocess.Popen(argv, **options)
+        else:
+            from .process_tree import launch
+            proc = launch(argv, options)
     except OSError:
         raise RuntimeError("command could not start") from None
     if os.name == "nt":
@@ -210,10 +214,23 @@ def stop(proc):
         elif proc.poll() is None:
             proc.kill()
     else:
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        control = getattr(proc, '_native_control', None)
+        if control is not None:
+            os.close(control)
+            proc._native_control = None
+            result_fd = proc._native_cleanup_result
+            proc._native_cleanup_result = None
+            try:
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                    proc.wait(timeout=3)
+                    raise RuntimeError('process supervisor did not stop') from None
+                if os.read(result_fd, 2) != b'1':
+                    raise RuntimeError('process cleanup was not confirmed')
+            finally:
+                os.close(result_fd)
     try:
         proc.wait(timeout=3)
     except subprocess.TimeoutExpired:
@@ -237,15 +254,18 @@ def run(argv, *, cwd=None, env=None, input=None, timeout=10, limit=2*1024*1024):
     overflow = threading.Event()
     lock = threading.Lock()
     def drain(pipe, index):
-        while True:
-            chunk = pipe.read1(16384)
-            if not chunk:
-                break
-            with lock:
-                if sum(map(len, buffers)) + len(chunk) > limit:
-                    overflow.set()
+        try:
+            while True:
+                chunk = pipe.read1(16384)
+                if not chunk:
                     break
-                buffers[index].extend(chunk)
+                with lock:
+                    if sum(map(len, buffers)) + len(chunk) > limit:
+                        overflow.set()
+                        break
+                    buffers[index].extend(chunk)
+        finally:
+            pipe.close()
     def feed():
         try:
             if input:
@@ -272,9 +292,15 @@ def run(argv, *, cwd=None, env=None, input=None, timeout=10, limit=2*1024*1024):
             raise RuntimeError("command output exceeded limit")
         return subprocess.CompletedProcess(argv, proc.returncode, bytes(buffers[0]), bytes(buffers[1]))
     finally:
-        stop(proc)
-        for thread in threads:
-            thread.join(timeout=1)
-        for pipe in (proc.stdin, proc.stdout, proc.stderr):
-            if not pipe.closed:
-                pipe.close()
+        try:
+            stop(proc)
+        finally:
+            for thread in threads:
+                thread.join(timeout=1)
+            # A pipe reader owns its buffered lock. Closing it from this
+            # thread while read() is blocked can defeat the timeout entirely.
+            for thread, pipe in zip(threads, (proc.stdout, proc.stderr, proc.stdin)):
+                if not thread.is_alive() and not pipe.closed:
+                    pipe.close()
+        if any(thread.is_alive() for thread in threads):
+            raise RuntimeError('command streams did not stop after cleanup')

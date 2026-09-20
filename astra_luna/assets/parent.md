@@ -38,3 +38,20 @@
 主 Agent 只写当前上下文已明确的模型短名，不添加思考档位；短名未明确时用“主 Agent”。子 Agent 仅按本轮实际运行的派发角色、明确调用参数或已加载角色配置填写模型和档位；例如 adaptive_luna_max 对应 luna_max。未运行的选择器候选、历史闲置 Agent 和失败且未启动的调用均不计数；同一子 Agent 的修订或重试只计一次。按模型与档位合并本轮实际运行的直接子 Agent，总数由主控汇总。未委派只写 luna ×0，不附虚构档位；确实缺少已运行子 Agent 的档位时仅显示其已知模型名。用户指定其他主控或叶子模型时按本次实际配置调整名称，不固定套用示例。
 
 至少两个直接子 Agent 的执行时间确有重叠才写 parallel；全为串行写 serial，混合执行写 mixed，无法确认则省略。只复用任务执行过程中已获得的事实，不为尾注读全局配置、探测接口、调用选择器、启动子 Agent 或发起网络请求，不让尾注影响是否委派的判断。尾注是执行摘要，不声称自动读取主窗口设置或服务端身份；不添加 unknown、default、“用户提供”“未自动读取”等调试标签。用户要求严格 JSON、固定 schema 或其他禁止附加文字的格式时，优先遵守该格式，不追加尾注。
+
+## 临时进程与长命令登记
+
+需要新增 Agent 时，叶子只向你报告需求，由你决定是否启动；叶子不自行创建 Agent。需要临时后台服务或较长命令时，你先为每个工作包建立独立的进程运行批次，并把 `project`、`run_id`、运行入口、owner、用途和资源/端口边界传给叶子：
+
+```text
+{{COMMAND}} process-init --project {{PROJECT}}
+{{COMMAND}} process-run --project {{PROJECT}} --run-id <run_id> --owner <owner> --purpose "<purpose>" -- <command> <arg>
+{{COMMAND}} process-check --project {{PROJECT}} --run-id <run_id>
+{{COMMAND}} process-cleanup --project {{PROJECT}} --run-id <run_id> [--retain <entry_id>,<entry_id>]
+```
+
+`process-init` 输出本批次的 `run_id`。`process-run` 是前台包装器，默认超时 600 秒；命令结束或超时后自行回收，不代表启动常驻服务。它会在启动前登记真实进程身份和用途，并立即向 stderr 刷新启动事件；命令完成时在 stdout 输出一个 JSON 对象。叶子应从启动事件或 `process-check` 尽快取得并报告 `entry_id`、PID 和用途，不要等最终 JSON 或工作包结束才登记。命令运行期间需要观察时，在另一个窗口用 `process-check` 读取独立快照；不要把普通启动输出当成账本。普通短命令不需要初始化进程批次。
+
+叶子停止写入后，你等待本批次所有参与者停止启动，再独立执行一次 `process-check` 和 `process-cleanup`，随后再执行一次 `process-check` 确认清理后的状态。`process-cleanup` 会封闭批次并拒绝新的 `process-run`；叶子不要清理共享批次。若叶子要提前停止自己的命令，先停止自己的执行会话包装器或报告你处理，不要教它按 PID 任意杀进程。经任务明确授权而保留的服务要列为 `RETAINED` 并写明用途；有保留项时不能声称 `CLEAN`。保留项可以在同一个 run 中日后再次 `process-check`/`process-cleanup`，但不能借此新增命令。这些登记不等于扫描全机未登记进程，也不是提示词强制执行机制。公共操作说明见项目仓库中的 `docs/PUBLIC_GUIDE.md#temporary-process-and-long-command-runs`。
+
+最终检查保留服务时传入同一份 `--retain` 清单；保留不会取消原命令超时。`CLEAN` 只证明登记范围内已停止，不代表工作包或命令成功；`DIRTY`、`UNVERIFIED`、缺失收尾报告均需继续核查，不得当成验收完成。

@@ -711,6 +711,7 @@ class _PublicDerived:
     turn_end_orders: dict[str, list[int]] = field(default_factory=dict)
     turn_end_order: dict[str, int] = field(default_factory=dict)
     metadata_order: dict[str, int] = field(default_factory=dict)
+    spawn_tool_calls: list[dict[str, Any]] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     selector_invoked: bool = False
     tests_failed: bool = False
@@ -875,6 +876,18 @@ def _derive_public(events: Any) -> _PublicDerived:
             elif item_type == "collabAgentToolCall":
                 for child in _string_list(_first(item, "receiverThreadIds", "receiver_thread_ids")):
                     derived.child_ids.add(child)
+                # The public schema describes model/reasoningEffort as the
+                # requested configuration for spawnAgent.  Other collab tools
+                # use these fields differently (or leave them null), so keep
+                # them only for the spawn-specific binding below.
+                if _string(item.get("tool")) == "spawnAgent":
+                    derived.spawn_tool_calls.append(
+                        {
+                            "id": _string(item.get("id")),
+                            "model": _string(item.get("model")),
+                            "reasoningEffort": _string(item.get("reasoningEffort")),
+                        }
+                    )
             elif item_type == "commandExecution":
                 derived.selector_invoked = derived.selector_invoked or _bool(item.get("selector_invoked")) or _bool(event.get("selector_invoked"))
                 if _bool(item.get("tests_failed")) or _bool(event.get("tests_failed")):
@@ -942,6 +955,15 @@ def validate_public_events(events: list[dict[str, Any]], expected_role: str = DE
         errors.append("root client provider is not openai")
     if not derived.root_id:
         errors.append("missing root thread id")
+
+    expected_effort = expected.removeprefix("adaptive_luna_")
+    for call in derived.spawn_tool_calls:
+        # Missing/null values remain compatible with older public streams.  A
+        # present string is evidence and must agree with the selected role.
+        if call["model"] and call["model"] != "gpt-5.6-luna":
+            errors.append("spawn requested model is not gpt-5.6-luna")
+        if call["reasoningEffort"] and call["reasoningEffort"] != expected_effort:
+            errors.append("spawn requested effort mismatch")
 
     root_turns = derived.turn_statuses.get(derived.root_id, [])
     if not root_turns or root_turns[-1] != "completed":

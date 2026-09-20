@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- Keep a fresh capability snapshot when the shared probe deadline expires,
+  without extending its age; make `refresh --project` retry that project's
+  same-day failure without changing other project caches.
+- Retain sanitized public child model/effort metadata and reject contradictory
+  spawn requests; missing public evidence remains unknown.
+- Supervise POSIX commands with identity-checked descendant cleanup and an
+  explicit completion acknowledgement; document the macOS tracking boundary.
+- Add per-work-package `process-init`, `process-run`, `process-check`, and
+  `process-cleanup` bookkeeping for bounded long commands; keep root cleanup
+  separate from leaf reporting and make explicitly retained work visible.
+- Clarify that leaves report requests for new Agents to the root instead of
+  starting further delegation themselves.
+- Accept case aliases of the same installation directory without accepting
+  another home or a symbolic-link alias.
+- Run CI on every push and pull request, including translated documentation,
+  images and ignore rules; honor custom homes in Windows standalone examples.
+
 - Define a delegation gate for substantive work: assess scope, explicit
   ownership and acceptance, and expected payoff before work starts; honor an
   explicit user request to delegate when the host permits it.

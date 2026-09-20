@@ -1,5 +1,7 @@
 import json
+import os
 from pathlib import Path
+import shutil
 import tempfile
 import tomllib
 import unittest
@@ -91,6 +93,122 @@ class InstallTests(unittest.TestCase):
         self.apply()
         self.assertEqual(i.validate(self.home)['schema'], 4)
         self.assertEqual(old.read_bytes(), b'old-runtime-preserved')
+
+    def test_prior_schema4_receipt_upgrades_new_runtime_and_uninstalls(self):
+        for prior_runtime in (i.PREVIOUS_SCHEMA4_RUNTIME,
+                              i.PREVIOUS_SCHEMA4_RUNTIME + ('astra_luna/process_tree.py',)):
+            with self.subTest(prior_runtime=prior_runtime):
+                self._prior_schema4_upgrade(prior_runtime)
+
+    def _prior_schema4_upgrade(self, prior_runtime):
+        home = self.base / ('prior-schema4-home-' + str(len(prior_runtime)))
+        home.mkdir()
+        (home / 'config.toml').write_bytes(b'model="old"\n')
+        (home / 'AGENTS.md').write_bytes(b'user instructions\n')
+        with patch.object(i, 'ROOT', self.source), \
+                patch.object(i, 'RUNTIME_FILES', prior_runtime):
+            _, _, plan = i.build(home)
+            installed = i.apply(home, plan['plan_id'])
+        self.assertEqual(installed['status'], 'INSTALLED')
+        process_tree = home / i.RESOURCE / 'runtime/astra_luna/process_tree.py'
+        registry = home / i.RESOURCE / 'runtime/astra_luna/process_registry.py'
+        self.assertEqual(process_tree.exists(), 'astra_luna/process_tree.py' in prior_runtime)
+        self.assertFalse(registry.exists())
+        with patch.object(i, 'ROOT', self.source):
+            _, _, upgrade = i.build(home)
+            self.assertIn(i.RESOURCE + '/runtime/astra_luna/process_registry.py',
+                          [row['path'] for row in upgrade['files']])
+            self.assertEqual(i.apply(home, upgrade['plan_id'])['status'], 'INSTALLED')
+            self.assertTrue(process_tree.is_file())
+            self.assertTrue(registry.is_file())
+            self.assertEqual(i.build(home)[2]['files'], [])
+            _, _, uninstall = i.build(home, uninstall=True)
+            self.assertEqual(i.apply(home, uninstall['plan_id'], uninstall=True)['status'], 'UNINSTALLED')
+        self.assertFalse(process_tree.exists())
+        self.assertFalse(registry.exists())
+
+    def test_prior_schema4_receipt_rejects_missing_or_unknown_runtime_paths(self):
+        home = self.base / 'invalid-prior-schema4-home'
+        home.mkdir()
+        (home / 'config.toml').write_bytes(b'model="old"\n')
+        (home / 'AGENTS.md').write_bytes(b'user instructions\n')
+        with patch.object(i, 'ROOT', self.source), \
+                patch.object(i, 'RUNTIME_FILES', i.PREVIOUS_SCHEMA4_RUNTIME):
+            _, _, plan = i.build(home)
+            i.apply(home, plan['plan_id'])
+        receipt_path = home / i.RESOURCE / 'install-manifest.json'
+        original = json.loads(receipt_path.read_bytes())
+        missing = json.loads(json.dumps(original))
+        missing['owned_files'].pop(i.RESOURCE + '/runtime/astra_luna/transport.py')
+        receipt_path.write_bytes(encode(missing))
+        with self.assertRaisesRegex(ValueError, 'invalid receipt paths'):
+            i.load(home)
+        unknown = json.loads(json.dumps(original))
+        unknown['owned_files'][i.RESOURCE + '/runtime/not-a-runtime.py'] = i.sha(b'unknown')
+        receipt_path.write_bytes(encode(unknown))
+        with self.assertRaisesRegex(ValueError, 'invalid receipt paths'):
+            i.load(home)
+
+    def test_case_variant_alias_supports_validation_upgrade_uninstall_and_recovery(self):
+        home = self.base / 'CaseHome'
+        home.mkdir()
+        (home / 'config.toml').write_bytes(b'model="old"\n')
+        (home / 'AGENTS.md').write_bytes(b'user instructions\n')
+        alias = self.base / 'casehome'
+        with patch.object(i, 'ROOT', self.source):
+            _, _, plan = i.build(home)
+            installed = i.apply(home, plan['plan_id'])
+            if not alias.exists() or not os.path.samefile(home, alias):
+                self.skipTest('case-sensitive filesystem; no case alias exists')
+            self.assertEqual(i.validate(alias)['codex_home'], str(home))
+            self.assertEqual(i.build(alias)[2]['files'], [])
+            rollback = i.recover(alias, installed['backup'])
+            self.assertEqual(rollback['status'], 'ROLLBACK_EXACT_PASS')
+            _, _, reinstall = i.build(alias)
+            i.apply(alias, reinstall['plan_id'])
+            receipt_path = home / i.RESOURCE / 'install-manifest.json'
+            receipt = json.loads(receipt_path.read_bytes())
+            old = home / i.RESOURCE / 'runtime/astra-luna'
+            old.write_bytes(b'old-runtime-preserved')
+            receipt.update(schema=3, version='0.3.0', codex_home=str(home))
+            receipt['owned_files'][i.RESOURCE + '/runtime/astra-luna'] = i.sha(old.read_bytes())
+            receipt_path.write_bytes(encode(receipt))
+            _, _, upgrade = i.build(alias)
+            i.apply(alias, upgrade['plan_id'])
+            self.assertEqual(i.validate(alias)['schema'], 4)
+            _, _, uninstall = i.build(alias, uninstall=True)
+            result = i.apply(alias, uninstall['plan_id'], uninstall=True)
+        self.assertEqual(result['status'], 'UNINSTALLED')
+        self.assertEqual(tomllib.loads((home / 'config.toml').read_text())['model'], 'old')
+
+    def test_receipt_rejects_credentials_copied_to_different_home(self):
+        home = self.base / 'OriginalHome'
+        home.mkdir()
+        (home / 'config.toml').write_bytes(b'model="old"\n')
+        (home / 'AGENTS.md').write_bytes(b'user instructions\n')
+        with patch.object(i, 'ROOT', self.source):
+            _, _, plan = i.build(home)
+            i.apply(home, plan['plan_id'])
+        copied = self.base / 'CopiedHome'
+        shutil.copytree(home, copied)
+        with self.assertRaisesRegex(ValueError, 'invalid installation receipt'):
+            i.load(copied)
+
+    def test_receipt_rejects_symbolic_link_home_alias(self):
+        home = self.base / 'RealHome'
+        home.mkdir()
+        (home / 'config.toml').write_bytes(b'model="old"\n')
+        (home / 'AGENTS.md').write_bytes(b'user instructions\n')
+        with patch.object(i, 'ROOT', self.source):
+            _, _, plan = i.build(home)
+            i.apply(home, plan['plan_id'])
+        alias = self.base / 'LinkHome'
+        try:
+            alias.symlink_to(home, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest('symbolic links unavailable on this runner')
+        with self.assertRaisesRegex(ValueError, 'symlink or reparse point rejected'):
+            i.load(alias)
 
     def test_override_and_unowned_files_and_provider_fail_closed(self):
         override = self.home / 'AGENTS.override.md'

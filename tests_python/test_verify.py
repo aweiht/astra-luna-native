@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from astra_luna import verify
+from astra_luna import transport, verify
 
 
 PASSING_TAGS = r'''#!/usr/bin/env python3
@@ -138,6 +138,66 @@ def good_events() -> list[dict]:
 
 
 class VerifyPublicEventsTests(unittest.TestCase):
+    @staticmethod
+    def _collab_events(*, tool="spawnAgent", model="gpt-5.6-luna", effort="max") -> list[dict]:
+        item = {
+            "id": "call-spawn",
+            "type": "collabAgentToolCall",
+            "tool": tool,
+            "status": "inProgress",
+            "senderThreadId": "root",
+            "receiverThreadIds": ["child-a", "child-b"] if tool == "spawnAgent" else [],
+            "model": model,
+            "reasoningEffort": effort,
+        }
+        completed = deepcopy(item)
+        completed["status"] = "completed"
+        return [
+            {"event": "item/started", "threadId": "root", "item": item, "elapsed_seconds": 0.2},
+            {"event": "item/completed", "threadId": "root", "item": completed, "elapsed_seconds": 0.3},
+        ]
+
+    def test_spawn_requested_model_effort_binds_role_and_allows_repeated_events(self) -> None:
+        events = good_events()
+        events[3:3] = self._collab_events()
+        result = verify.validate_public_events(events, "adaptive_luna_max")
+        self.assertTrue(result["ok"], result)
+
+        for field, value in (("model", "different-model"), ("reasoningEffort", "low")):
+            with self.subTest(field=field):
+                mutated = deepcopy(events)
+                next(
+                    event["item"] for event in mutated
+                    if event.get("event") == "item/completed"
+                )[field] = value
+                result = verify.validate_public_events(mutated, "adaptive_luna_max")
+                self.assertFalse(result["ok"], result)
+
+    def test_non_spawn_collab_model_effort_does_not_bind_role(self) -> None:
+        events = good_events()
+        events[3:3] = self._collab_events(tool="sendInput", model="different-model", effort="low")
+        result = verify.validate_public_events(events, "adaptive_luna_max")
+        self.assertTrue(result["ok"], result)
+
+    def test_transport_metadata_keeps_child_effective_conflict_visible(self) -> None:
+        events = deepcopy(good_events())
+        for event in events:
+            if event.get("event") == "child/public-metadata":
+                event["thread"] = transport.metadata(
+                    {
+                        **event["thread"],
+                        "effective": {
+                            "model": "different-model",
+                            "reasoningEffort": "low",
+                            "prompt": "must not persist",
+                        },
+                    }
+                )
+        result = verify.validate_public_events(events, "adaptive_luna_max")
+        self.assertFalse(result["ok"], result)
+        self.assertTrue(any("child effective model" in error for error in result["errors"]))
+        self.assertTrue(any("child effective effort" in error for error in result["errors"]))
+
     @staticmethod
     def multiple_turn_events(windows=None) -> list[dict]:
         windows = windows or {"child-a": [(1.0, 4.0), (10.0, 12.0)],

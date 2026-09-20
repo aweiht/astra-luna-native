@@ -142,6 +142,10 @@ Astra/Luna: delegated · luna_max ×2 · parallel
 这里只展示任务实际发生的委派：子 Agent 的档位来自派发角色或调用参数，数量按实际运行的直接子 Agent 统计。主控只显示模型名，不读取或展示当前窗口的思考强度；示例不是本次运行结果。
 实质任务在计划或进度中用一句话说明委派或直接完成的原因，沿用这个紧凑尾注，不另建委派报告文件。
 
+### 临时进程与长命令登记
+
+普通短命令不需要建立进程账本。若工作包需要临时服务或受限时长的长命令，主 Agent 先建立独立批次，再把 `run_id`、项目、入口、owner、用途和资源或端口边界传给每个叶子。叶子要尽快报告启动登记的 `entry_id` 和 PID，主动停止自己的命令或执行会话，并把明确保留的工作标为 `RETAINED`；主 Agent 负责最终检查、清理和清理后的二次检查。清理后批次拒绝新增命令，保留项仍可在同一 run 中再次检查或清理。可复制的 POSIX/PowerShell 命令、输出时序和限制见[公共进程操作说明](docs/PUBLIC_GUIDE.md#temporary-process-and-long-command-runs)。
+
 ## 3. 快速确认是否正常
 
 ### 检查安装和选档
@@ -183,6 +187,8 @@ Windows 把 `python3` 换成 `py -3`。`doctor` 检查本地安装，不调用�
 python3 astra-luna.py verify --live
 ```
 
+进程清理存在平台边界：macOS 极短命中间进程连续 fork 后可能隐藏后代关系，不能把辅助脚本当成安全沙箱。详见[清理边界](docs/PUBLIC_GUIDE.md#process-cleanup-boundary)。
+
 该命令使用真实模型，最多启动两个直接 Luna 子 Agent，整个检查有 600 秒上限。它检查真实输出、角色、文件范围和验收契约，完整通过才返回 `LIVE_VERIFIED`。失败时按输出排查，不能把 `doctor` 通过当成这一步通过。
 
 验证时会临时打开官方 stdio app-server 通道，结束后关闭；不会安装常驻服务。可通过 `--project PATH --output PATH` 指定新的独立验收目录和结果目录，避免使用已有业务目录。
@@ -195,6 +201,7 @@ python3 astra-luna.py verify --live
 | 找不到 `codex` | 确认同一个终端能运行 `codex --version`；必要时通过 `--codex PATH` 指定路径。 |
 | 安装报模型目录不兼容，或空白 home 报 `input or file operation failed` | 检查使用的 Codex home、CLI 版本和模型目录；在同一环境运行 `codex debug models`。要求的 Astra/Luna 型号与档位缺失时，安装不会继续。 |
 | `doctor` 提示快照或缓存不可用 | 运行 `python3 astra-luna.py refresh`，再运行 `doctor`。`refresh` 会读取公开数据，但不调用模型。 |
+| 某个项目同一天选档失败后仍被阻塞 | 运行 `python3 astra-luna.py refresh --project /path/to/project`，再对同一项目运行 `select --explain`；不带 `--project` 的 `refresh` 只更新 home 级策略。 |
 | 修改过受管角色后升级失败 | 保留改动，检查冲突并决定如何合并；不要直接覆盖文件或安装凭据。 |
 | 安装后没有使用 Luna | 先开始新 Codex 任务；简单任务直接完成是正常情况。需要独立验收时使用显式的 `verify --live`。 |
 | Windows / Linux 的真实模型任务是否已验证？ | 已通过这些系统的 CI 安装与打包测试，CLI/模型数据使用模拟输入；已有真实模型证据仅来自 macOS。 |

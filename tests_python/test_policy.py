@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -128,6 +129,75 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(seen, [(self.home, str(self.home / 'codex'))])
         self.assertEqual(result["capabilities_at"], policy._stamp(self.now))
         self.assertEqual(path.read_bytes(), original)
+
+    def test_expired_snapshot_is_not_used_when_probe_times_out(self):
+        path, original = self.snapshot(self.now - timedelta(hours=73))
+
+        def slow_catalogue(*_args):
+            time.sleep(0.1)
+            return list(EFFORTS)
+
+        with patch.dict(os.environ, {"TZ": "UTC"}, clear=False), \
+                patch.object(policy, "SOURCE_TIMEOUT", 0.02), \
+                patch.object(policy, "DirectSupportedEfforts", side_effect=slow_catalogue), \
+                patch.object(policy, "FetchSources", return_value=[]):
+            result = policy.select(self.home, self.project, now=self.now)
+
+        self.assertEqual(result["role"], "")
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["capabilities_at"], policy._stamp(None))
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_future_snapshot_is_not_used_when_probe_times_out(self):
+        path, original = self.snapshot(self.now + timedelta(hours=1))
+
+        def slow_catalogue(*_args):
+            time.sleep(0.1)
+            return list(EFFORTS)
+
+        with patch.dict(os.environ, {"TZ": "UTC"}, clear=False), \
+                patch.object(policy, "SOURCE_TIMEOUT", 0.02), \
+                patch.object(policy, "DirectSupportedEfforts", side_effect=slow_catalogue), \
+                patch.object(policy, "FetchSources", return_value=[]):
+            result = policy.select(self.home, self.project, now=self.now)
+
+        self.assertEqual(result["role"], "")
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["capabilities_at"], policy._stamp(None))
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_timeout_uses_fresh_snapshot_without_extending_checked_at(self):
+        checked_at = self.now - timedelta(hours=1)
+        path, original = self.snapshot(checked_at)
+
+        def slow_catalogue(*_args):
+            time.sleep(0.1)
+            return list(EFFORTS)
+
+        with patch.dict(os.environ, {"TZ": "UTC"}, clear=False), \
+                patch.object(policy, "SOURCE_TIMEOUT", 0.02), \
+                patch.object(policy, "DirectSupportedEfforts", side_effect=slow_catalogue), \
+                patch.object(policy, "FetchSources", return_value=[]):
+            result = policy.select(self.home, self.project, now=self.now)
+
+        self.assertEqual(result["role"], "adaptive_luna_max")
+        self.assertEqual(result["status"], "fallback")
+        self.assertEqual(result["capabilities_at"], policy._stamp(checked_at))
+        self.assertEqual(path.read_bytes(), original)
+
+    def test_successful_probe_takes_precedence_over_fresh_snapshot(self):
+        checked_at = self.now - timedelta(hours=1)
+        self.snapshot(checked_at)
+
+        with patch.dict(os.environ, {"TZ": "UTC"}, clear=False), \
+                patch.object(policy, "DirectSupportedEfforts", return_value=list(EFFORTS)), \
+                patch.object(policy, "FetchSources", return_value=[]):
+            result = policy.select(self.home, self.project, now=self.now)
+
+        cache = json.loads((self.project / ".astra-luna/state/policy-cache.json").read_text())
+        self.assertEqual(result["role"], "adaptive_luna_max")
+        self.assertEqual(cache["capabilities_at"], policy._stamp(self.now))
+        self.assertNotIn("used fresh public capability snapshot", " ".join(result["reasons"]))
 
     def test_missing_capability_blocks_and_does_not_invent_success(self):
         with patch.dict(os.environ, {"TZ": "UTC"}, clear=False), \

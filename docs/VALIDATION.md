@@ -1,10 +1,10 @@
 # 0.4.0 validation
 
-**Status: SOURCE_PUBLISHED.** Observed on 2026-09-15 with macOS arm64,
+**Published baseline: SOURCE_PUBLISHED.** Observed on 2026-09-15 with macOS arm64,
 Python 3.14.6 and official Codex CLI 0.147.0. These are 0.4.0 observations;
 older releases are not used as runtime evidence for this version.
 
-| Layer | Current status |
+| Layer | Published baseline |
 | --- | --- |
 | Python source tests | 42 tests on each CI matrix target |
 | Package | One allowlisted Python ZIP; internal and external SHA256 checks |
@@ -20,6 +20,47 @@ The release is a readable Python 3.11+ standard-library ZIP. No Go compiler,
 custom binary or pip package is needed. Source tests and package inspection do
 not prove official login, current quota or model access on another machine.
 
+
+## Local process handoff on 2026-09-20 (not yet pushed)
+
+The current local source ran **74 offline tests: 73 passed, one Linux-only test
+skipped**, on macOS arm64 / Python 3.14.6. Ten process-registry regressions cover
+real CLI success/failure/timeout, concurrent entry registration, launcher death,
+retained services followed by later cleanup, other-run and unrelated-process
+preservation, stale identity rejection, missing entry files, Darwin exec identity
+and scalar Tracker birth tokens. The installed-entry lifecycle also checks the
+new commands after the original download moves.
+
+Independent real-process checks confirmed retained-service cleanup and recovery
+after a killed launcher, with an unrelated process kept running. Records are
+written before launch, and parent checks re-read OS process identities. A missing
+completion report remains visible after successful cleanup; `CLEAN` is a process
+result, not evidence of successful task work.
+
+This revision has not been pushed or run in Linux/Windows CI. The platform
+branches are implemented; the published CI results below are historical and do
+not validate these new commands on those operating systems. No new live model
+smoke test was run. The cooperative registry does not guarantee detection of
+unregistered or unobservable descendants; the macOS containment boundary remains.
+
+## Local adversarial fixes on 2026-09-20 (not yet pushed)
+
+The revised source ran 64 offline tests on macOS arm64 / Python 3.14.6:
+63 passed and the Linux-only double-fork/subreaper test was skipped. The tests
+cover deadline fallback with original snapshot age, same-day project recovery,
+contradictory public model/effort metadata, APFS case-alias lifecycle, detached
+children after timeout or parent exit, unrelated-process preservation and
+signal exit status. Cleanup-failure, non-UTF-8 process-name parsing, zero-PID
+rejection and old schema-4 upgrade regressions also passed. Fixture scripts ran against the independent 132 + 132 + 5
+case oracle; no live model task was started.
+
+Linux subreaper code and Windows compatibility remain pending this revision's
+hosted CI. Earlier matrix results in this document describe the published
+baseline, not the unpushed changes. The workflow now runs on all pushes and pull
+requests, so translated README, image and ignore-rule changes cannot bypass it.
+Older macOS kernels without original-parent-version metadata explicitly skip
+the detached-child/early-parent-exit subcase; that boundary is not claimed as
+verified on those kernels. See the [macOS cleanup limit](PUBLIC_GUIDE.md#process-cleanup-boundary).
 
 ## Documentation verification on 2026-09-19
 

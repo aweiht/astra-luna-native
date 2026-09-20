@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 from pathlib import Path
 import shutil
@@ -64,7 +65,8 @@ def doctor(home, codex=None):
 def parser():
     value = argparse.ArgumentParser(description='Astra/Luna Native: Python 3.11+, standard library only.')
     value.add_argument('command', nargs='?', choices=('install', 'uninstall', 'recover', 'rollback',
-        'doctor', 'select', 'refresh', 'verify', 'internal-smoke-check'))
+        'doctor', 'select', 'refresh', 'verify', 'internal-smoke-check',
+        'process-init', 'process-run', 'process-check', 'process-cleanup'))
     value.add_argument('--version', action='version', version=__version__)
     value.add_argument('--codex-home')
     value.add_argument('--codex', help='official Codex CLI path')
@@ -76,6 +78,11 @@ def parser():
     value.add_argument('--dry-run', action='store_true')
     value.add_argument('--explain', action='store_true')
     value.add_argument('--live', action='store_true', help='use real Codex allowance for two native tasks')
+    value.add_argument('--run-id', help='process handoff run returned by process-init')
+    value.add_argument('--owner', help='work package or child Agent identifier')
+    value.add_argument('--purpose', help='short process purpose; do not include secrets')
+    value.add_argument('--timeout', type=float, help='process-run timeout in seconds (default 600)')
+    value.add_argument('--retain', help='comma-separated entry IDs explicitly kept running')
     return value
 
 
@@ -85,6 +92,10 @@ def show(value):
 
 def main(argv=None):
     arguments = list(sys.argv[1:] if argv is None else argv)
+    child_argv = None
+    if '--' in arguments:
+        split = arguments.index('--')
+        child_argv, arguments = arguments[split + 1:], arguments[:split]
     seen = set()
     for arg in arguments:
         if arg.startswith('--'):
@@ -105,6 +116,44 @@ def main(argv=None):
             raise ValueError('--yes and --dry-run cannot be combined')
         if args.live and command != 'verify':
             raise ValueError('--live is only valid for verify')
+        if child_argv is not None and command != 'process-run':
+            raise ValueError('command arguments after -- are only valid for process-run')
+        if command.startswith('process-'):
+            from . import process_registry
+            if not args.project:
+                raise ValueError('--project is required for process commands')
+            if args.live or args.yes or args.dry_run or args.plan_id or args.backup or args.output or args.explain:
+                raise ValueError('unsupported option for process command')
+            project = Path(os.path.abspath(os.path.expanduser(args.project)))
+            if command == 'process-init':
+                if args.run_id or args.owner or args.purpose or args.timeout is not None or args.retain:
+                    raise ValueError('process-init only accepts --project')
+                result = process_registry.init_run(project)
+            else:
+                if not args.run_id:
+                    raise ValueError('--run-id is required')
+                if command == 'process-run':
+                    if not args.owner or not args.purpose or not child_argv or args.retain:
+                        raise ValueError('process-run requires --owner, --purpose and -- COMMAND ARGS')
+                    timeout = args.timeout if args.timeout is not None else 600
+                    if not math.isfinite(timeout) or not 0 < timeout <= 86400:
+                        raise ValueError('--timeout must be greater than zero and at most 86400 seconds')
+                    def started(event):
+                        print(encode(event).decode('utf-8'), end='', file=sys.stderr, flush=True)
+                    result = process_registry.run_process(project, args.run_id, args.owner,
+                        args.purpose, child_argv, timeout=timeout, on_start=started)
+                else:
+                    if args.owner or args.purpose or args.timeout is not None:
+                        raise ValueError('--owner, --purpose and --timeout are only valid for process-run')
+                    retain = tuple(args.retain.split(',')) if args.retain is not None else ()
+                    if any(not item for item in retain) or len(set(retain)) != len(retain):
+                        raise ValueError('--retain requires unique nonempty entry IDs')
+                    action = process_registry.check_run if command == 'process-check' else process_registry.cleanup_run
+                    result = action(project, args.run_id, retain=retain)
+            show(result)
+            return 0 if result.get('status') in ('STARTED', 'READY', 'SUCCESS', 'CLEAN', 'RETAINED') else 1
+        if args.run_id or args.owner or args.purpose or args.timeout is not None or args.retain:
+            raise ValueError('process options require a process command')
         if command == 'internal-smoke-check':
             from . import verify
             if not args.project:
@@ -168,7 +217,11 @@ def main(argv=None):
             return 0
         if command == 'refresh':
             policy.refresh_capabilities(home, resolve_codex(home, args.codex))
-            selected = policy.select(home, force=True)
+            if args.project:
+                project = Path(os.path.abspath(args.project))
+                selected = policy.select(home, project, force=True)
+            else:
+                selected = policy.select(home, force=True)
             if selected.get('role') not in ('adaptive_luna_' + e for e in install.EFFORTS):
                 raise ValueError('selection unavailable after refresh')
             show(selected)

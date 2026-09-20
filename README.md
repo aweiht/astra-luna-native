@@ -222,6 +222,19 @@ For substantive work, state the delegation or direct-completion reason in one
 sentence in the plan or progress update. Keep this compact footer and do not
 create a separate delegation report file.
 
+### Temporary process and long command runs
+
+Ordinary short commands need no process ledger. For a temporary service or a
+bounded long command, the root creates one isolated run and passes its `run_id`,
+project, entry point, owner, purpose, and resource or port boundary to each
+child. The child reports the startup `entry_id` and PID promptly, stops its own
+command or execution session, and reports explicitly retained work as
+`RETAINED`; the root performs the final check, cleanup, and post-cleanup check.
+The run rejects new commands after cleanup, while retained entries can be
+checked or cleaned again in the same run. See the [public process operations
+guide](docs/PUBLIC_GUIDE.md#temporary-process-and-long-command-runs) for
+copyable POSIX and PowerShell commands, output semantics, and limits.
+
 ## Installation scope and backups
 
 The transaction may add or update these owned paths under the selected Codex
@@ -267,7 +280,7 @@ Use the matching repair path:
   the selected role:
 
   ```sh
-  python3 astra-luna.py refresh
+  python3 astra-luna.py refresh --project /path/to/project
   python3 astra-luna.py doctor
   python3 astra-luna.py select --project /path/to/project --explain
   ```
@@ -289,7 +302,9 @@ python3 astra-luna.py select --project /path/to/project --explain
 `select` chooses a role and does not start a child agent. The project policy
 cache lives in `.astra-luna/state`; add `.astra-luna/` to
 the project's ignore file. `select` may refresh once per local day. `refresh`
-explicitly updates the public capability snapshot and policy inputs; neither
+explicitly updates the public capability snapshot and policy inputs. Use
+`refresh --project /path/to/project` to retry that project immediately after a
+same-day failure; plain `refresh` updates the home-level policy. Neither
 command invokes a model.
 
 ![Captured CLI checks](docs/images/cli-check.png)
@@ -299,6 +314,9 @@ local installation on 2026-09-19, with private paths omitted. It shows local
 checks; it is not a Codex screenshot or evidence of a live model task._
 
 ## Optional live verification
+
+Process cleanup has platform-specific limits, especially rapidly double-forked
+processes on macOS. See the [process cleanup boundary](docs/PUBLIC_GUIDE.md#process-cleanup-boundary).
 
 For a real native task check, copy this prompt into Codex:
 
