@@ -2,6 +2,18 @@
 
 ## 0.6.0 — Unreleased
 
+- Revise the trial delegation policy: after a minimal boundary check, a safe
+  substantive package with explicit scope, ownership, artifact, and acceptance
+  is dispatched to Luna before execution when the host permits it.
+- Keep complete feature and UI diagnosis work with one child through local tests
+  and ordinary failure repair; escalate only public-interface or major-design
+  changes, repeated unresolved failures, or capability and permission limits.
+- Keep Astra responsible for decisions, public interfaces, coordination, and
+  final and high-risk integration acceptance; serialize shared resources and
+  preserve user-specified worker counts or parallel arrangements.
+- Remove cost, elapsed-time, token-saving, and fixed-ratio delegation gates.
+  This trial adds no usage-collection system and makes no promise that token
+  use or completion time will decrease in real tasks.
 - Set the public project identity to Codex Adaptive Agents and use the
   `codex-adaptive-agents.py` entry point, `codex_adaptive_agents` package,
   `codex-adaptive-agents` resource directory, `CODEX_ADAPTIVE_AGENTS` marker,
@@ -44,9 +56,9 @@
 - Run CI on every push and pull request, including translated documentation,
   images and ignore rules; honor custom homes in Windows standalone examples.
 
-- Define a delegation gate for substantive work: assess scope, explicit
-  ownership and acceptance, and expected payoff before work starts; honor an
-  explicit user request to delegate when the host permits it.
+- Document the earlier delegation gate for substantive work with explicit
+  ownership and acceptance; honor an explicit user request to delegate when the
+  host permits it.
 - Clarify direct-completion cases, parallel versus serial packages, the five
   child limit, re-evaluation triggers, and evidence-based selector, role, and
   tool failure reporting.

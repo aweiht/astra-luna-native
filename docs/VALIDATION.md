@@ -3,6 +3,26 @@
 Evidence applies to a specific source revision and environment. Offline tests
 and local readiness do not establish model access or quota on another machine.
 
+## 2026-09-22 delegation-policy trial
+
+The parent and leaf templates plus the English and Simplified Chinese public
+guidance were reviewed together for simple questions, one-off small changes,
+complete feature or UI diagnosis, serial shared resources, ordinary failure
+repair, cross-module integration, and high-risk permission, data, or process
+acceptance. The current policy requires a safe package with explicit goal,
+boundary, ownership, and checkable acceptance to be dispatched before its work
+starts when the host permits it. It has no cost, elapsed-time, token-saving, or
+fixed-ratio gate and adds no usage-collection system. This is a routing trial;
+real-task token or completion-time changes remain unverified.
+
+No wording-only tests were added. The existing offline suite ran with
+`python3 -m unittest discover -s tests_python -p 'test_*.py' -v`: **91 tests,
+90 passed, one Linux-only test skipped** on macOS arm64 / Python 3.14.6. The
+existing release builder also produced `codex-adaptive-agents-0.6.0-python.zip`
+with `source_equals_runtime: true` and validated the public Markdown links and
+checksums. No additional `verify --live` model smoke test was run for this
+instruction update; ordinary development delegation is separate from that test.
+
 ## 0.6.0: one project identity
 
 On 2026-09-20, the complete local suite ran **91 tests: 90 passed, one Linux-only

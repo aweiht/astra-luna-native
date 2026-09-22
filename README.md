@@ -12,9 +12,10 @@ repository. No other agent-orchestration project is required. See the
 [implementation and dependency details](docs/UPSTREAM.md).
 
 After installation, continue to describe work in ordinary Codex tasks. Astra
-plans and reviews the work, using 0–5 native Luna children when there are useful
-independent subtasks. The package adds configuration and scripts to Codex;
-it has no separate chat window and installs no background service or MCP server.
+plans and reviews the work, while 0–5 native Luna children take clearly bounded
+substantive work packages with explicit ownership and acceptance. The package
+adds configuration and scripts to Codex; it has no separate chat window and
+installs no background service or MCP server.
 
 ## Easiest setup: copy these prompts into Codex
 
@@ -170,52 +171,69 @@ example:
 > Check this project's input validation and test coverage. Delegate useful,
 > independent work to Luna, then review the changes and report the verification.
 
-You do not need to start a worker or run the selector yourself. Small changes
-can stay with the root agent. Independent work can run in parallel, with at
-most five direct Luna children in one task. Before a delegation batch, the
+You do not need to start a worker or run the selector yourself. Before
+substantive work starts, Astra does only enough exploration to identify the
+boundary, then decides the route. Independent work can run in parallel, with
+at most five direct Luna children in one task. Before a delegation batch, the
 managed instructions call the daily selector; external rankings are only a
-selection aid and do not guarantee savings, speed, or task quality.
+selection aid and do not guarantee lower token use, speed, or task quality.
 
 ### Delegation gate
 
-Before substantive work starts, Astra assesses the scope and expected payoff.
-A work package must be evaluated when work crosses modules or layers, spans
-multiple substantive files, contains multiple independent workflows, needs
-cross-component debugging, or needs independent exploration, external
-verification, implementation, testing, or review. If the package has an
-explicit goal, file or problem ownership, and checkable acceptance, and its
-expected value exceeds child startup, communication, and acceptance overhead,
-Astra dispatches a native child when the host permits it. An explicit user
-request to delegate is honored within those permissions; the root does not
-merely describe a split or add a child after the work is done.
+Astra owns requirements, key decisions, public interfaces, coordination, and
+final acceptance. A safe work package with an explicit goal, boundary, artifact
+or problem ownership, and checkable acceptance must be handed to a native Luna
+child when the host permits it, before that package starts. This is a trial
+routing policy: it makes no
+promise of lower token usage or faster completion, sets no total-cost or
+elapsed-time threshold, uses no 2:8 (or other) delegation ratio, and adds no
+usage-collection system. An explicit user request to delegate is honored within
+the host's permissions; the root does not merely describe a split or add a
+child after the work is complete.
 
-Direct completion is suitable for a simple single-point change, a repetitive
-mechanical rename, a root-only decision, an inseparable dependency chain, or an
-explicit no-delegation request. “Small” by itself does not waive a
-cross-module assessment. Independent packages may run in parallel; dependent
-packages run serially; a task uses no more than five direct Luna children.
-Parallel work also needs non-conflicting browser, database, port, and output
-resources. If an explicit worker count or parallel arrangement cannot be met
-safely, explain the constraint and ask to adjust it rather than silently changing
-the request. Architectural decisions stay with the root; useful independent
-fact-checking can still be delegated.
+A full feature or UI diagnosis is one work package: the same child carries it
+through implementation, local tests, and ordinary failure repair. A normal
+failure returns to that child for repair. Escalate to Astra when the repair
+requires a public-interface change or major design decision, the failure stays
+unresolved after reasonable repair, or a capability or permission limit blocks
+the package. Astra independently checks cross-module integration and
+high-risk permission, data, or process behavior before final acceptance.
+
+Direct completion is suitable for a simple question, a genuinely one-off small
+change, a root-only decision, a tightly coupled dependency chain with no safe
+independent boundary, or an explicit no-delegation request. Do not split a
+substantive batch into small edits to avoid this assessment. Independent
+packages may run in parallel; dependent packages run serially. Shared GUI,
+database, port, or build-output resources have one owner and are serialized
+when needed; a resource constraint does not by itself cancel a valid work
+package. A task uses no more than five direct Luna children, and agents are not
+started merely to satisfy a ratio or create duplicate work.
+
+If the user specifies a worker count or parallel arrangement that cannot be met
+safely, explain the constraint and ask to adjust it; do not silently change the
+request. The root may take work back when an escalation condition applies and
+should state the reason.
 
 | Situation | Route |
 | --- | --- |
-| Changes cross modules or layers and have separate ownership and acceptance | Delegate; run independent packages in parallel where useful |
-| Two independent workflows or a cross-component investigation can be isolated | Delegate; use serial order when one package depends on another |
-| One local typo, a mechanical rename, or a root-only decision without a useful independent check | Complete directly |
-| A tightly coupled fix has no safe independent boundary | Complete directly, or reassess after a boundary appears |
+| Simple question, one small edit, or root-only decision | Complete directly |
+| Complete feature or UI diagnosis with clear ownership and acceptance | Delegate the full implementation, local tests, and ordinary repairs to one child |
+| Independent work packages with separate resources | Delegate; run in parallel when safe |
+| Dependent packages or shared GUI, port, or build directory | Delegate; use serial order with one resource owner |
+| Cross-module integration or high-risk permission, data, or process behavior | Child performs the package; root performs the independent integration/risk check |
+| Public-interface change, major design decision, repeated unresolved failure, or capability/permission block | Escalate to the root |
 | The user explicitly says not to delegate | Complete directly |
 
 Reassess unfinished work when the scope expands, the original plan no longer
 fits, troubleshooting repeats, or the task enters a new implementation or
-verification phase. The daily selector only chooses a supported role level; it
-does not decide whether to delegate or spawn agents, and it is not a timer or
-scheduler. If the selector, role, or native tool fails, report the actual
-returned error. Do not claim that a capability is unavailable without evidence,
-and do not treat successful selection as a child-agent invocation. These are
-instructions for the agent, not a host-enforced guarantee of delegation.
+verification phase. The root may take work back when an escalation condition
+applies, and should state the reason. The daily selector only chooses a
+supported role level; it does not decide whether to delegate or spawn agents,
+and it is not a timer or scheduler. If the selector, role, or native tool
+fails, report the actual returned error. Do not claim that a capability is
+unavailable without evidence, and do not treat successful selection as a
+child-agent invocation. These are instructions for the agent, not a
+host-enforced guarantee of delegation.
 
 The final reply includes a compact execution summary, for example:
 
@@ -227,9 +245,15 @@ Astra/Luna: delegated · luna_max ×2 · parallel
 These examples show the format, not a live run. Child levels and counts come
 from actual dispatches; the root displays its known model name only. The
 summary does not read or report the current window's reasoning-effort setting.
-For substantive work, state the delegation or direct-completion reason in one
-sentence in the plan or progress update. Keep this compact footer and do not
-create a separate delegation report file.
+For substantive work, keep the handoff context minimal and accurate and prefer
+bounded, history-free context. Return five concise points: completed work, file
+or artifact locations, verification evidence, unresolved issues, and pending
+decisions. Keep detailed logs at the agreed local path for on-demand reading;
+do not omit failures or risks. While a child runs, the root may work on a
+different, non-overlapping task and waits when no such work remains. State the
+delegation or direct-completion reason in one sentence in the plan or progress
+update. Keep this compact footer and do not create a separate delegation report
+file.
 
 ### Temporary process and long command runs
 

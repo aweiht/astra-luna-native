@@ -15,3 +15,44 @@ dist/
 *.db-wal
 
 .codex-adaptive-agents/
+
+# Local process state and historical native sources
+/.astra-luna/
+/AGENTS.md
+/CODEX_START_PROMPT.md
+/astra-luna
+/go.mod
+/go.sum
+/cmd/
+/internal/
+/templates/
+/tests/
+
+# Historical documentation kept outside the Python release
+docs/ACCEPTANCE.md
+docs/ARCHITECTURE.md
+docs/CAPABILITY_REPORT.md
+docs/HOOK_ACTIVATION.md
+docs/NATIVE_ACCEPTANCE_REPORT.md
+docs/NATIVE_PLAN.md
+docs/P0_ACCEPTANCE_REPORT.md
+docs/PACKAGE_QA.md
+docs/PRD.md
+docs/SMOKE_REPORT.md
+docs/SOURCES.md
+docs/STATUS.md
+docs/TASKS.md
+/docs/images/cli-check.png
+
+# Historical native and release helper scripts
+scripts/build_release.py
+scripts/check_cancel.py
+scripts/doctor.py
+scripts/install_native.py
+scripts/native.py
+scripts/native_smoke.py
+scripts/prepare_smoke.py
+scripts/probe_hooks.py
+scripts/test_release.py
+scripts/verify_native_events.py
+scripts/verify_native_runtime.py

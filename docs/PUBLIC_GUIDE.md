@@ -145,52 +145,65 @@ dynamic update succeeded.
 
 ## Delegation gate
 
-The root agent owns the task decision and final acceptance. Before substantive
-work starts, it assesses scope and expected payoff. A work package must be
-evaluated when work crosses modules or layers, spans multiple substantive files,
-contains multiple independent workflows, needs cross-component debugging, or
-needs independent exploration, external verification, implementation, testing,
-or review. When a package has an explicit goal, file or problem ownership, and
-checkable acceptance, and its expected value exceeds child startup,
-communication, and acceptance overhead, the root dispatches a native child when
-the host permits it. An explicit user request to delegate is honored within
-those permissions. The root must make the call before doing the package; a
-verbal split or a child added after the work is complete is not delegation.
+The root agent owns requirements, key decisions, public interfaces,
+coordination, and final acceptance. Before substantive work starts, it does
+only enough exploration to identify the boundary. A safe work package with an
+explicit goal, boundary, artifact or problem ownership, and checkable acceptance
+must be handed to a native Luna child when the host permits it, before that
+package starts. This is a trial routing policy: it has no total-cost, elapsed-time, or
+token-saving threshold, no 2:8 (or other) delegation ratio, and no usage-
+collection system. An explicit user request to delegate is honored within host
+permissions; a verbal split or a child added after the work is complete is not
+delegation.
 
-Direct completion is appropriate for a simple single-point change, a repetitive
-mechanical rename, a root-only decision, an inseparable dependency chain, or an
-explicit no-delegation request. A change being small does not waive a
-cross-module assessment. Independent packages may run in parallel; dependent
-packages run serially; one task uses no more than five direct Luna children.
-Before parallel work, check shared browser, database, port, and output resources;
-use explicit read-only or isolated scopes, or serialize conflicting work. If an
-explicit worker count or parallel arrangement cannot be met safely, explain the
-constraint and ask to adjust it rather than silently changing the request.
-Architectural decisions stay with the root, while useful independent
-fact-checking can still be delegated. Distinguish argument or permission errors,
-temporary failures, and host limitations; one failed call does not establish
-that Luna is generally unavailable.
+A complete feature or UI diagnosis stays with one child through implementation,
+local tests, and ordinary failure repair. Return a normal failure to that child.
+Escalate to the root only for a public-interface change or major design
+decision, a failure that remains unresolved after reasonable repair, or a
+capability or permission limit. The root independently checks cross-module
+integration and high-risk permission, data, or process behavior before final
+acceptance.
+
+Direct completion is appropriate for a simple question, a genuinely one-off
+small change, a root-only decision, a tightly coupled dependency chain with no
+safe independent boundary, or an explicit no-delegation request. Do not split a
+substantive batch into small edits to avoid this assessment. Independent
+packages may run in parallel; dependent packages run serially. Shared browser,
+database, GUI, port, or build-output resources have one owner and are serialized
+when needed. One task uses no more than five direct Luna children, and agents
+are not started merely to satisfy a ratio or create duplicate work.
 
 | Example | Expected route |
 | --- | --- |
-| Changes cross modules or layers with separate ownership and acceptance | Delegate; parallelize only independent packages |
-| Separate workflows or cross-component debugging can be isolated | Delegate; keep dependency order when required |
-| One local typo, a mechanical rename, or a root-only decision without a useful independent check | Complete directly |
-| A tightly coupled fix has no safe independent boundary | Complete directly, then reassess if a boundary appears |
+| Simple question, one small edit, or a root-only decision | Complete directly |
+| Complete feature or UI diagnosis with clear ownership and acceptance | Delegate implementation, local tests, and ordinary repairs to one child |
+| Independent work packages with separate resources | Delegate; parallelize when safe |
+| Dependent packages or shared GUI, port, or build directory | Delegate; use serial order with one resource owner |
+| Cross-module integration or high-risk permission, data, or process behavior | Child performs the package; root performs the independent risk check |
+| Public-interface change, major design decision, repeated unresolved failure, or capability/permission block | Escalate to the root |
 | The user explicitly asks for no delegation | Complete directly |
 
-Reassess unfinished work when scope expands, the original plan stops fitting,
-troubleshooting repeats, or a new implementation or verification phase begins.
-The daily selector only chooses the supported role level. It does not decide
-whether the task deserves delegation, spawn agents, or act as a timer or
-scheduler. If the selector, role, or native tool fails, report the actual
-returned error and do not claim unavailability without evidence. A successful
-selection is not a child-agent invocation. These are instructions for the agent,
-not a host-enforced guarantee of delegation.
+If the user specifies a worker count or parallel arrangement that cannot be met
+safely, explain the constraint and ask to adjust it; do not silently change the
+request. Reassess unfinished work when scope expands, the original plan stops
+fitting, troubleshooting repeats, or a new implementation or verification
+phase begins. The root may take work back when an escalation condition applies
+and should state the reason. The daily selector only chooses the supported role
+level. It does not decide whether the task deserves delegation, spawn agents, or
+act as a timer or scheduler. If the selector, role, or native tool fails,
+report the actual returned error and do not claim unavailability without
+evidence. A successful selection is not a child-agent invocation. These are
+instructions for the agent, not a host-enforced guarantee of delegation.
 
-For substantive work, record the delegation or direct-completion reason in one
-sentence in the plan or progress update and keep the existing compact execution
-footer. Do not create a separate delegation report file.
+For substantive work, keep the context minimal and accurate and prefer bounded,
+history-free handoffs. The child returns five concise points: completed work,
+file or artifact locations, verification evidence, unresolved issues, and
+pending decisions. Keep detailed logs at the agreed local path for on-demand
+reading; do not omit failures or risks. The root may work on a different,
+non-overlapping task while a child runs and waits when no such work remains.
+Record the delegation or direct-completion reason in one sentence in the plan or
+progress update and keep the compact execution footer. Do not create a separate
+delegation report file.
 
 ## Temporary process and long command runs
 
