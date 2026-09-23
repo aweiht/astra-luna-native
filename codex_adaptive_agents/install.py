@@ -37,7 +37,13 @@ VERSION_PROFILES = {
         'agents.default_subagent_reasoning_effort':'"max"',
         'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5',
     },
+    '0.7.0': {
+        'agents.enabled':'true', 'agents.default_subagent_model':'"gpt-6-luna"',
+        'agents.default_subagent_reasoning_effort':'"xhigh"',
+        'agents.max_threads':'5', 'agents.max_concurrent_threads_per_session':'5',
+    },
 }
+ROOT_PREFERENCE_KEYS = frozenset({'model', 'model_reasoning_effort'})
 VERSION_RE = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z')
 MISSING = object()
 
@@ -150,11 +156,13 @@ def _managed_keys(raw, receipt, profile):
     return stored
 
 
-def _validate_managed_config(raw, receipt, profile):
+def _validate_managed_config(raw, receipt, profile, *, ignored_keys=()):
     """Reject edits to every known managed key, including omitted rows."""
     obj = tomllib.loads((raw or b'').decode('utf-8'))
     keys = _managed_keys(raw, receipt, profile)
     for key in keys:
+        if key in ignored_keys:
+            continue
         if key not in profile:
             raise ValueError('unsupported managed configuration key')
         expected = tomllib.loads('v=' + profile[key])['v']
@@ -359,7 +367,17 @@ def load(home):
     return receipt
 
 
-def validate(home):
+def _removed_root_preferences(receipt, target_profile):
+    """Identify the one versioned migration that returns root preferences to the user."""
+    if (not isinstance(receipt, dict) or receipt.get('version') != '0.6.0' or
+            __version__ != '0.7.0'):
+        return frozenset()
+    prior = _receipt_profile(receipt)
+    return frozenset(key for key in ROOT_PREFERENCE_KEYS
+                     if key in prior and key not in target_profile)
+
+
+def validate(home, *, for_upgrade=False):
     receipt = load(home)
     if receipt is None:
         return None
@@ -371,8 +389,11 @@ def validate(home):
     if span is None or raw[slice(*span)].decode('utf-8') != receipt['block']:
         raise ValueError('managed instruction block changed')
     config = read(home / 'config.toml')
-    _validate_managed_config(config, receipt, _receipt_profile(receipt))
-    transform(config, 'revert', changes=receipt['config_changes'])
+    profile = _receipt_profile(receipt)
+    ignored = _removed_root_preferences(receipt, _current_profile()) if for_upgrade else frozenset()
+    _validate_managed_config(config, receipt, profile, ignored_keys=ignored)
+    reversible_changes = [row for row in receipt['config_changes'] if row['key'] not in ignored]
+    transform(config, 'revert', changes=reversible_changes)
     return receipt
 
 
@@ -390,7 +411,7 @@ def role(effort):
     instruction = read(ROOT / 'codex_adaptive_agents/assets/leaf.md').decode('utf-8')
     return (f'name = "adaptive_luna_{effort}"\n'
             f'description = "Luna {effort} leaf worker selected by the daily policy; bounded execution only."\n'
-            'model = "gpt-5.6-luna"\n'
+            'model = "gpt-6-luna"\n'
             f'model_reasoning_effort = "{effort}"\n'
             f'developer_instructions = {json.dumps(instruction, ensure_ascii=False)}\n\n'
             '[agents]\nenabled = false\n\n[shell_environment_policy.set]\nORCHESTRATOR_WORKER = "1"\n').encode('utf-8')
@@ -410,7 +431,7 @@ def build(home, uninstall=False):
         raise ValueError('AGENTS.override.md takes precedence')
     config, instructions = get('config.toml'), get('AGENTS.md')
     manifest = get(RESOURCE + '/install-manifest.json')
-    receipt = validate(home)
+    receipt = validate(home, for_upgrade=not uninstall)
     for relative in sorted(owned_paths()):
         get(relative)
     raw = instructions or b''
@@ -466,10 +487,14 @@ def build(home, uninstall=False):
             # Merge deltas therefore describe only an approved version change;
             # compose them with the old rows so uninstall still reaches the
             # pre-first-install values.
-            changes = _compose_changes(receipt, merge_result['changes'])
+            removed_root_preferences = _removed_root_preferences(receipt, current_profile)
+            prior_receipt = (dict(receipt, config_changes=[
+                row for row in receipt['config_changes'] if row['key'] not in removed_root_preferences
+            ]) if removed_root_preferences else receipt)
+            changes = _compose_changes(prior_receipt, merge_result['changes'])
             prior_profile = _receipt_profile(receipt)
-            managed_keys = sorted(set(_managed_keys(config, receipt, prior_profile)) |
-                                  set(target_desired))
+            prior_managed = set(_managed_keys(config, receipt, prior_profile)) - set(removed_root_preferences)
+            managed_keys = sorted(prior_managed | set(target_desired))
             if any(key not in current_profile for key in managed_keys):
                 raise ValueError('managed configuration profile removed a prior key')
         else:

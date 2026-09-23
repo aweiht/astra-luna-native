@@ -1,4 +1,4 @@
-# Codex Adaptive Agents 0.6.0
+# Codex Adaptive Agents 0.7.0
 
 [简体中文](README.zh-CN.md)
 
@@ -26,8 +26,9 @@ are also included below.
 
 ### Step 1: ask Codex to install
 
-This sets the managed Astra Max root defaults, Luna Max child defaults, five
-roles, and project instructions while preserving unrelated configuration.
+This sets GPT-6 Luna child defaults at `xhigh`, five roles, and project
+instructions while preserving your main model, reasoning level, and unrelated
+configuration.
 
 ```text
 Install Codex Adaptive Agents for me from its project repository:
@@ -81,15 +82,16 @@ delegation. It is a usage overview, not evidence of a live model run._
 
 The installer manages a small, explicit scope in the user's Codex home:
 
-- Astra Max defaults to `gpt-6-astra` with `model_reasoning_effort = "max"`.
-- Luna Max is configured as the default subagent: `gpt-5.6-luna` at `max`.
+- Your main model and reasoning level remain under your control. Installation
+  and upgrades preserve the existing main settings.
+- GPT-6 Luna is configured as the default subagent: `gpt-6-luna` at `xhigh`.
 - Five role files are installed: `adaptive_luna_low`, `adaptive_luna_medium`,
   `adaptive_luna_high`, `adaptive_luna_xhigh`, and `adaptive_luna_max`.
 - A daily policy cache chooses one of those roles from the local public model
   catalogue and the two public radar sources. No model call is used for this
   selection.
 
-The installer changes the managed `model` and `agents` keys intentionally. It
+The installer changes the managed `agents` keys intentionally. It
 preserves unrelated configuration, roles, MCP settings, hooks, and other files
 outside that managed scope. Every write is planned, backed up, written
 atomically, and verified; a conflicting managed change stops the transaction.
@@ -104,7 +106,7 @@ You need all of the following before applying an installation:
 - A Codex client that supports native custom agents. Normal use and live
   verification require model access and available account allowance.
 - A normally configured official Codex home and account whose public catalogue
-  exposes `gpt-6-astra` with `max`, plus `gpt-5.6-luna` with all five levels:
+  exposes `gpt-6-astra` with `max`, plus `gpt-6-luna` with all five levels:
   `low`, `medium`, `high`, `xhigh`, and `max`.
 
 The installer reads the CLI's public version and model catalogue through
@@ -294,7 +296,8 @@ snapshot, and the local policy cache. It does not call a model.
 - `READY` means the installation and current local capability/policy state are
   usable.
 - `READY_FALLBACK` means the installation is usable with the supported
-  conservative Max role because comparable radar evidence was insufficient.
+  `xhigh` role because usable, comparable GPT-6 Luna radar scores were
+  unavailable (including missing model rows or failed website requests).
   Run `refresh` when the public sources are available; this status does not
   claim that a dynamic recommendation was proven.
 - `NOT_READY` means the installation is absent or a required check failed. A
@@ -342,8 +345,8 @@ command invokes a model.
 
 ![Captured CLI checks](docs/images/cli-check.svg)
 
-_This SVG presents actual `doctor` and `select` output from a local 0.6.0
-installation captured on 2026-09-20, with private paths omitted. It shows local
+_This SVG presents actual `doctor` and `select` output from a local 0.7.0
+installation captured on 2026-09-23, with private paths omitted. It shows local
 checks; it is not a Codex screenshot or evidence of a live model task._
 
 ## Optional live verification
@@ -393,7 +396,7 @@ an installed MCP server, daemon, Hook, scheduler, or resident process.
 
 ## Validation boundary
 
-The current 0.6.0 evidence is revision- and environment-specific. No new live
+The current 0.7.0 evidence is revision- and environment-specific. No new live
 model verification was requested for this revision, and no historical CI run
 proves the current source. See [docs/VALIDATION.md](docs/VALIDATION.md) for the
 current local boundary and the earlier published CI result tied to its exact
@@ -449,7 +452,7 @@ members, broken public Markdown links, private paths, and overwriting an
 existing archive:
 
 ```sh
-python3 scripts/release_python.py --output-dir dist/0.6.0-python
+python3 scripts/release_python.py --output-dir dist/0.7.0-python
 ```
 
 The project is distributed under the [Apache License 2.0](LICENSE). See

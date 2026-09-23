@@ -39,9 +39,11 @@ class InstallTests(unittest.TestCase):
         receipt = i.validate(self.home)
         self.assertEqual(receipt['schema'], 4)
         self.assertEqual(set(receipt['owned_files']), i.owned_paths())
+        self.assertNotIn('model', receipt['managed_keys'])
+        self.assertNotIn('model_reasoning_effort', receipt['managed_keys'])
         self.assertEqual(i.build(self.home)[2]['config_changes'], [])
         undo = i.build(self.home, True)[2]['config_changes']
-        self.assertEqual(next(row for row in undo if row['key'] == 'model')['after'], '"gpt-5.6-sol"')
+        self.assertNotIn('model', {row['key'] for row in undo})
         self.assertEqual(self.apply()['status'], 'IDEMPOTENT_PASS')
         with (self.home / 'config.toml').open('ab') as stream:
             stream.write(b'\n[projects.example]\ntrust_level="trusted"\n')
@@ -64,7 +66,7 @@ class InstallTests(unittest.TestCase):
             i.apply(self.home, plan['plan_id'])
         self.apply()
         path = self.home / 'config.toml'
-        path.write_text(path.read_text().replace('gpt-6-astra', 'gpt-5.6-sol'))
+        path.write_text(path.read_text().replace('gpt-6-luna', 'gpt-5.6-sol'))
         with self.assertRaisesRegex(ValueError, 'changed'):
             i.build(self.home, True)
 
@@ -92,12 +94,93 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(receipt['version'], '0.7.0')
         self.assertNotIn('model', {row['key'] for row in receipt['config_changes']})
 
+    def test_v06_upgrade_preserves_root_preferences_and_uninstall(self):
+        home = self.base / 'upgrade-root-preferences-home'
+        home.mkdir()
+        original = (
+            b'model = "gpt-6-astra"\nmodel_reasoning_effort = "xhigh"\nnotify = ["keep"]\n'
+            b'[agents]\ndefault_subagent_model = "gpt-5.6-luna"\n'
+            b'default_subagent_reasoning_effort = "max"\nmax_threads = 5\n'
+            b'max_concurrent_threads_per_session = 5\n[mcp_servers.custom]\ncommand = "keep"\n'
+        )
+        (home / 'config.toml').write_bytes(original)
+        (home / 'AGENTS.md').write_bytes(b'user instructions\n')
+        current_role = i.role
+        legacy_role = lambda effort: current_role(effort).replace(b'gpt-6-luna', b'gpt-5.6-luna')
+        with patch.object(i, '__version__', '0.6.0'), patch.object(i, 'role', side_effect=legacy_role):
+            _, _, plan = i.build(home)
+            i.apply(home, plan['plan_id'])
+            old_role = tomllib.loads((home / 'agents' / 'adaptive_luna_xhigh.toml').read_text())
+            self.assertEqual(old_role['model'], 'gpt-5.6-luna')
+
+        config_path = home / 'config.toml'
+        config = config_path.read_bytes()
+        config = config.replace(b'model_reasoning_effort = "max"',
+                                b'model_reasoning_effort = "xhigh"')
+        config = config.replace(b'notify = ["keep"]', b'notify = ["keep", "user-added"]')
+        config_path.write_bytes(config)
+        old_receipt = i.load(home)
+        self.assertIn('model_reasoning_effort', old_receipt['managed_keys'])
+        with self.assertRaisesRegex(ValueError, 'managed configuration changed'):
+            i.validate(home)
+
+        _, _, upgrade = i.build(home)
+        self.assertNotIn('model', {row['key'] for row in upgrade['config_changes']})
+        self.assertNotIn('model_reasoning_effort', {row['key'] for row in upgrade['config_changes']})
+        self.assertEqual(i.apply(home, upgrade['plan_id'])['status'], 'INSTALLED')
+        upgraded = i.validate(home)
+        self.assertEqual(upgraded['version'], '0.7.0')
+        self.assertNotIn('model', upgraded['managed_keys'])
+        self.assertNotIn('model_reasoning_effort', upgraded['managed_keys'])
+        self.assertNotIn('model', {row['key'] for row in upgraded['config_changes']})
+        self.assertNotIn('model_reasoning_effort', {row['key'] for row in upgraded['config_changes']})
+        current = tomllib.loads(config_path.read_text())
+        self.assertEqual(current['model'], 'gpt-6-astra')
+        self.assertEqual(current['model_reasoning_effort'], 'xhigh')
+        self.assertEqual(current['notify'], ['keep', 'user-added'])
+        self.assertEqual(current['mcp_servers']['custom']['command'], 'keep')
+
+        config_path.write_bytes(config_path.read_bytes().replace(b'gpt-6-luna', b'gpt-5.6-luna'))
+        with self.assertRaisesRegex(ValueError, 'managed configuration changed'):
+            i.validate(home)
+        config_path.write_bytes(config_path.read_bytes().replace(b'gpt-5.6-luna', b'gpt-6-luna'))
+        role_path = home / 'agents' / 'adaptive_luna_xhigh.toml'
+        role_path.write_bytes(role_path.read_bytes() + b'# user edit\n')
+        with self.assertRaisesRegex(ValueError, 'managed file changed'):
+            i.validate(home)
+        role_path.write_bytes(i.role('xhigh'))
+
+        _, _, uninstall = i.build(home, uninstall=True)
+        self.assertNotIn('model', {row['key'] for row in uninstall['config_changes']})
+        self.assertNotIn('model_reasoning_effort', {row['key'] for row in uninstall['config_changes']})
+        self.assertEqual(i.apply(home, uninstall['plan_id'], uninstall=True)['status'], 'UNINSTALLED')
+        final = tomllib.loads(config_path.read_text())
+        self.assertEqual(final['model'], 'gpt-6-astra')
+        self.assertEqual(final['model_reasoning_effort'], 'xhigh')
+        self.assertEqual(final['notify'], ['keep', 'user-added'])
+        self.assertEqual(final['mcp_servers']['custom']['command'], 'keep')
+
+    def test_new_install_preserves_existing_root_preferences(self):
+        config = b'model = "gpt-6-astra"\nmodel_reasoning_effort = "xhigh"\n[agents.implementer]\nmodel = "custom-role"\n'
+        (self.home / 'config.toml').write_bytes(config)
+        _, _, plan = i.build(self.home)
+        self.assertNotIn('model', {row['key'] for row in plan['config_changes']})
+        self.assertNotIn('model_reasoning_effort', {row['key'] for row in plan['config_changes']})
+        i.apply(self.home, plan['plan_id'])
+        result = tomllib.loads((self.home / 'config.toml').read_text())
+        self.assertEqual(result['model'], 'gpt-6-astra')
+        self.assertEqual(result['model_reasoning_effort'], 'xhigh')
+        self.assertEqual(result['agents']['implementer']['model'], 'custom-role')
+        role = tomllib.loads((self.home / 'agents' / 'adaptive_luna_xhigh.toml').read_text())
+        self.assertEqual(role['model'], 'gpt-6-luna')
+        self.assertEqual(role['model_reasoning_effort'], 'xhigh')
+
     def test_unknown_illegal_version_and_downgrade_refuse(self):
         with patch.object(i, '__version__', '0.6.0'):
             self.apply()
         manifest = self.home / i.RESOURCE / 'install-manifest.json'
         original = json.loads(manifest.read_bytes())
-        for version in ('0.7.0', '0.5.0', 'not-a-version'):
+        for version in ('0.8.0', '0.5.0', 'not-a-version'):
             with self.subTest(version=version):
                 mutated = dict(original, version=version)
                 manifest.write_bytes(encode(mutated))
@@ -122,7 +205,7 @@ class InstallTests(unittest.TestCase):
         self.apply()
         manifest = self.home / i.RESOURCE / 'install-manifest.json'
         receipt = json.loads(manifest.read_bytes())
-        receipt['managed_keys'].remove('model')
+        receipt['managed_keys'].remove('agents.default_subagent_model')
         manifest.write_bytes(encode(receipt))
         config = self.home / 'config.toml'
         before = config.read_bytes()
@@ -137,9 +220,13 @@ class InstallTests(unittest.TestCase):
                     b'default_subagent_model = "gpt-5.6-sol"\nmax_threads = 5\n')
         (home / 'config.toml').write_bytes(original)
         (home / 'AGENTS.md').write_bytes(b'old instructions\n')
-        with patch.object(i, '__version__', '0.6.0'):
+        current_role = i.role
+        legacy_role = lambda effort: current_role(effort).replace(b'gpt-6-luna', b'gpt-5.6-luna')
+        with patch.object(i, '__version__', '0.6.0'), patch.object(i, 'role', side_effect=legacy_role):
             _, _, plan = i.build(home)
             i.apply(home, plan['plan_id'])
+            old_role = tomllib.loads((home / 'agents' / 'adaptive_luna_xhigh.toml').read_text())
+            self.assertEqual(old_role['model'], 'gpt-5.6-luna')
         future = dict(i.VERSION_PROFILES['0.6.0'])
         future['model'] = '"synthetic-future-root"'
         future['agents.default_subagent_model'] = '"synthetic-future-leaf"'
@@ -168,7 +255,7 @@ class InstallTests(unittest.TestCase):
         manifest = self.home / i.RESOURCE / 'install-manifest.json'
         before_manifest = manifest.read_bytes()
         config = self.home / 'config.toml'
-        config.write_bytes(config.read_bytes().replace(b'gpt-6-astra', b'user-model'))
+        config.write_bytes(config.read_bytes().replace(b'gpt-6-luna', b'user-model'))
         before_config = config.read_bytes()
         with self.assertRaisesRegex(ValueError, 'changed'):
             i.build(self.home)

@@ -38,6 +38,7 @@ class PolicyTests(unittest.TestCase):
             "checked_at": checked_at.isoformat().replace("+00:00", "Z"),
             "supported_efforts": efforts or EFFORTS,
             "root_model": "gpt-6-astra",
+            "child_model": "gpt-6-luna",
             "codex": codex,
             "cli_version": "codex-cli 0.147.0",
             "evidence": "public_client_catalogue",
@@ -46,6 +47,41 @@ class PolicyTests(unittest.TestCase):
         raw = json.dumps(value, sort_keys=True).encode("utf-8")
         path.write_bytes(raw)
         return path, raw
+
+    def previous_model_cache(self):
+        legacy_config = policy._cfg()
+        legacy_config.pop("child_model")
+        legacy_config["fallback_effort"] = "max"
+        state = self.project / ".codex-adaptive-agents" / "state"
+        state.mkdir(parents=True, exist_ok=True)
+        day_key = "UTC:2026-09-15"
+        cache = {
+            "schema": 1,
+            "attempted_days": {day_key: policy._stamp(self.now)},
+            "last_attempt": policy._stamp(self.now),
+            "last_success": policy._stamp(self.now),
+            "capabilities_at": policy._stamp(self.now),
+            "supported_efforts": EFFORTS,
+            "timezone": "UTC",
+            "day": "2026-09-15",
+            "last_status": "fallback",
+            "config_key": policy.config_key(legacy_config),
+            "policy": {
+                "version": "policy-v1-old-model",
+                "generated_at": policy._stamp(self.now),
+                "default_effort": "max",
+                "status": "fallback",
+                "reasons": [],
+                "sources": [],
+                "selected_evidence": [],
+                "quality_effort": "",
+                "conflict": False,
+                "runtime_route": policy.RUNTIME_ROUTE,
+            },
+        }
+        path = state / "policy-cache.json"
+        path.write_text(json.dumps(cache), encoding="utf-8")
+        return path
 
     def test_source_json_rejects_duplicates_and_bad_timestamps(self):
         with self.assertRaises(policy.PolicyError):
@@ -76,8 +112,8 @@ class PolicyTests(unittest.TestCase):
             second = policy.select(self.home, self.project,
                                    now=self.now + timedelta(hours=1))
 
-        self.assertEqual(first["role"], "adaptive_luna_max")
-        self.assertEqual(second["role"], "adaptive_luna_max")
+        self.assertEqual(first["role"], "adaptive_luna_xhigh")
+        self.assertEqual(second["role"], "adaptive_luna_xhigh")
         self.assertTrue(first["refreshed"])
         self.assertFalse(second["refreshed"])
         self.assertEqual(calls, {"catalog": 1, "sources": 1})
@@ -106,7 +142,7 @@ class PolicyTests(unittest.TestCase):
             result = policy.select(self.home, self.project, now=self.now)
 
         cache = json.loads((self.project / ".codex-adaptive-agents/state/policy-cache.json").read_text())
-        self.assertEqual(result["role"], "adaptive_luna_max")
+        self.assertEqual(result["role"], "adaptive_luna_xhigh")
         self.assertEqual(result["status"], "fallback")
         self.assertTrue(result["stale"])
         self.assertEqual(cache["capabilities_at"], policy._stamp(checked_at))
@@ -125,7 +161,7 @@ class PolicyTests(unittest.TestCase):
                 patch.object(policy, "FetchSources", return_value=[]):
             result = policy.select(self.home, self.project, now=self.now)
 
-        self.assertEqual(result["role"], "adaptive_luna_max")
+        self.assertEqual(result["role"], "adaptive_luna_xhigh")
         self.assertEqual(seen, [(self.home, str(self.home / 'codex'))])
         self.assertEqual(result["capabilities_at"], policy._stamp(self.now))
         self.assertEqual(path.read_bytes(), original)
@@ -180,7 +216,7 @@ class PolicyTests(unittest.TestCase):
                 patch.object(policy, "FetchSources", return_value=[]):
             result = policy.select(self.home, self.project, now=self.now)
 
-        self.assertEqual(result["role"], "adaptive_luna_max")
+        self.assertEqual(result["role"], "adaptive_luna_xhigh")
         self.assertEqual(result["status"], "fallback")
         self.assertEqual(result["capabilities_at"], policy._stamp(checked_at))
         self.assertEqual(path.read_bytes(), original)
@@ -195,7 +231,7 @@ class PolicyTests(unittest.TestCase):
             result = policy.select(self.home, self.project, now=self.now)
 
         cache = json.loads((self.project / ".codex-adaptive-agents/state/policy-cache.json").read_text())
-        self.assertEqual(result["role"], "adaptive_luna_max")
+        self.assertEqual(result["role"], "adaptive_luna_xhigh")
         self.assertEqual(cache["capabilities_at"], policy._stamp(self.now))
         self.assertNotIn("used fresh public capability snapshot", " ".join(result["reasons"]))
 
@@ -212,6 +248,148 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(result["stale"])
         cache = json.loads((self.project / ".codex-adaptive-agents/state/policy-cache.json").read_text())
         self.assertEqual(cache["last_success"], "0001-01-01T00:00:00Z")
+
+    def test_unusable_radar_scores_fall_back_to_xhigh_even_when_max_is_supported(self):
+        modeldial = {
+            "schemaVersion": "1.1",
+            "batch": {
+                "id": "public-batch",
+                "publishedAt": "2026-09-15T11:00:00Z",
+                "evaluationProfile": "profile-v1",
+                "graderVersion": "grader-v1",
+                "questionPackVersion": "pack-v1",
+            },
+            "rankings": [{
+                "model": "gpt-6-luna", "reasoningEffort": "max", "score": None,
+                "maxScore": 100, "scoreBasis": "backend", "route": "codex_official_login",
+            }],
+        }
+        deng = {
+            "schema": 3,
+            "mode": "equal_latest_3",
+            "benchmark_id": "cohort-v1",
+            "source_updated_at": "2026-09-15T11:00:00Z",
+            "scoring_mode": "iq-v1",
+            "points": [{
+                "model": "gpt-6-luna", "effort": "max", "iq": None,
+                "total": 20, "average_minutes": 10,
+                "source_updated_at": "2026-09-15T11:00:00Z",
+            }],
+        }
+        sources = [
+            policy.parse_modeldial(json.dumps(modeldial).encode(), self.now),
+            policy.parse_deng(json.dumps(deng).encode(), self.now),
+        ]
+
+        result = policy.select_policy(self.now, sources)
+
+        self.assertEqual(result["status"], "fallback")
+        self.assertEqual(result["default_effort"], "xhigh")
+
+    def test_older_model_radar_rows_are_ignored(self):
+        modeldial = {
+            "schemaVersion": "1.1",
+            "batch": {"id": "old-batch", "publishedAt": "2026-09-15T11:00:00Z"},
+            "rankings": [{"model": "gpt-5.6-luna", "reasoningEffort": "max", "score": 100,
+                          "maxScore": 100}],
+        }
+        deng = {
+            "schema": 3, "mode": "equal_latest_3", "benchmark_id": "old-cohort",
+            "source_updated_at": "2026-09-15T11:00:00Z",
+            "points": [{"model": "gpt-5.6-luna", "effort": "max", "iq": 150,
+                        "source_updated_at": "2026-09-15T11:00:00Z"}],
+        }
+
+        self.assertEqual(policy.parse_modeldial(json.dumps(modeldial).encode(), self.now)["rows"], [])
+        self.assertEqual(policy.parse_deng(json.dumps(deng).encode(), self.now)["rows"], [])
+
+    def test_unavailable_configured_fallback_blocks_instead_of_upgrading_to_max(self):
+        available = ["low", "medium", "high", "max"]
+        with patch.dict(os.environ, {"TZ": "UTC"}, clear=False), \
+                patch.object(policy, "DirectSupportedEfforts", return_value=available), \
+                patch.object(policy, "FetchSources", return_value=[]):
+            result = policy.select(self.home, self.project, now=self.now)
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["role"], "")
+        self.assertIn("xhigh", " ".join(result["reasons"]))
+
+    def test_previous_model_daily_cache_refreshes_once_for_new_identity(self):
+        cache_path = self.previous_model_cache()
+        available = ["low", "xhigh", "max"]
+        with patch.dict(os.environ, {"TZ": "UTC"}, clear=False), \
+                patch.object(policy, "DirectSupportedEfforts", return_value=available) as catalog, \
+                patch.object(policy, "FetchSources", return_value=[]) as sources:
+            result = policy.select(self.home, self.project, now=self.now)
+
+        self.assertEqual(result["status"], "fallback")
+        self.assertEqual(result["role"], "adaptive_luna_xhigh")
+        self.assertTrue(result["refreshed"])
+        catalog.assert_called_once()
+        sources.assert_called_once()
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        self.assertEqual(cache["config_key"], policy.config_key())
+        self.assertEqual(cache["supported_efforts"], available)
+        self.assertEqual(cache["policy"]["selected_evidence"], [])
+
+    def test_config_key_changes_with_child_model_identity(self):
+        previous_model_config = policy._cfg()
+        previous_model_config.pop("child_model")
+
+        self.assertNotEqual(policy.config_key(previous_model_config), policy.config_key())
+
+    def test_previous_model_capabilities_are_not_reused_when_new_probe_fails(self):
+        cache_path = self.previous_model_cache()
+        with patch.dict(os.environ, {"TZ": "UTC"}, clear=False), \
+                patch.object(policy, "DirectSupportedEfforts",
+                             side_effect=policy.PolicyError("new model catalog unavailable")) as catalog, \
+                patch.object(policy, "FetchSources", return_value=[]):
+            first = policy.select(self.home, self.project, now=self.now)
+            second = policy.select(self.home, self.project, now=self.now)
+
+        self.assertEqual(first["status"], "blocked")
+        self.assertEqual(first["role"], "")
+        self.assertEqual(second["status"], "blocked")
+        self.assertEqual(second["role"], "")
+        catalog.assert_called_once()
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        self.assertEqual(cache["config_key"], policy.config_key())
+        self.assertEqual(cache["supported_efforts"], [])
+        self.assertEqual(cache["capabilities_at"], policy._stamp(None))
+
+    def test_old_capability_snapshot_without_child_model_identity_is_rejected(self):
+        path, _original = self.snapshot(self.now)
+        snapshot = json.loads(path.read_text(encoding="utf-8"))
+        snapshot.pop("child_model")
+        path.write_text(json.dumps(snapshot), encoding="utf-8")
+
+        with self.assertRaisesRegex(policy.PolicyError, "capability snapshot unavailable"):
+            policy.read_capabilities(self.home, now=self.now)
+
+    def test_rating_evidence_can_still_choose_a_faster_near_quality_effort(self):
+        def measurement(effort, score, duration, rank):
+            return {
+                "source": "modeldial", "url": policy.MODEL_DIAL_URL,
+                "fetched_at": policy._stamp(self.now), "evaluated_at": policy._stamp(self.now),
+                "batch": "rated-batch", "model": "gpt-6-luna", "effort": effort,
+                "category": "backend", "protocol": "profile-v1", "grader": "grader-v1",
+                "dataset_version": "pack-v1", "route": policy.RUNTIME_ROUTE,
+                "score": score, "score_max": 100, "duration_ms": duration,
+                "duration_metric": "runtime_ms", "samples": 5, "published_rank": rank,
+                "critical_failure": False, "content_hash": "sha256:public-sample",
+            }
+
+        source = {
+            "source": "modeldial", "status": "ok", "batch": "rated-batch",
+            "rows": [measurement("max", 100, 1000, 1),
+                     measurement("high", 99.5, 600, 2)],
+        }
+
+        result = policy.select_policy(self.now, [source])
+
+        self.assertEqual(result["quality_effort"], "max")
+        self.assertEqual(result["default_effort"], "high")
+        self.assertEqual(result["status"], "degraded")
 
     def test_no_iana_database_uses_system_local_date_and_portable_utc(self):
         with patch.dict(os.environ, {"TZ": ""}), \

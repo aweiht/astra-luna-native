@@ -1,6 +1,18 @@
 # Changelog
 
-## 0.6.0 — Unreleased
+## 0.7.0 — Unreleased
+
+- Use `gpt-6-luna` for the default child model and all five native roles.
+- Default to `xhigh` when usable scores for this exact model are unavailable;
+  invalidate old-model policy and capability caches. Model capability checks
+  still apply before selection.
+- Preserve the user's main model and reasoning level during installation and
+  upgrade. Migrate 0.6.0 receipts without changing their historical profiles;
+  keep child configuration and managed-file conflict checks strict.
+- Update verification, installation and policy regression coverage, bilingual
+  documentation, and the captured local command illustration.
+
+## 0.6.0 — Prior source snapshot
 
 - Revise the trial delegation policy: after a minimal boundary check, a safe
   substantive package with explicit scope, ownership, artifact, and acceptance
@@ -114,5 +126,5 @@ and the standard library.
   separately in the receipt for uninstall and recovery.
 
 
-The current 0.6.0 contract and package contents are defined by README.md,
+The current 0.7.0 contract and package contents are defined by README.md,
 docs/PUBLIC_GUIDE.md, and release-manifest.json.

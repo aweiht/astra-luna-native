@@ -31,7 +31,7 @@ installer scripts, or Git submodules in the distribution.
 - **Public radar data** is fetched from the endpoints declared in `policy.py`
   to inform role selection. Those responses are data, never executable code
   or agent instructions. Missing comparable evidence can lead to a supported
-  conservative Max fallback; capability checks still have to pass.
+  `xhigh` fallback; capability checks still have to pass.
 - **Git** is useful for cloning and updating this repository, but downloading
   its source ZIP is also supported.
 

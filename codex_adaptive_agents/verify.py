@@ -34,7 +34,7 @@ SCRIPT_TIMEOUT_SECONDS = 5
 MAX_PUBLIC_MESSAGE_BYTES = 4 * 1024 * 1024
 MAX_OUTPUT_BYTES = 2 * 1024 * 1024
 MAX_EVENTS = 12000
-DEFAULT_EXPECTED_ROLE = "adaptive_luna_max"
+DEFAULT_EXPECTED_ROLE = "adaptive_luna_xhigh"
 ALLOWED_ROLES = frozenset(
     f"adaptive_luna_{effort}" for effort in ("low", "medium", "high", "xhigh", "max")
 )
@@ -960,8 +960,8 @@ def validate_public_events(events: list[dict[str, Any]], expected_role: str = DE
     for call in derived.spawn_tool_calls:
         # Missing/null values remain compatible with older public streams.  A
         # present string is evidence and must agree with the selected role.
-        if call["model"] and call["model"] != "gpt-5.6-luna":
-            errors.append("spawn requested model is not gpt-5.6-luna")
+        if call["model"] and call["model"] != "gpt-6-luna":
+            errors.append("spawn requested model is not gpt-6-luna")
         if call["reasoningEffort"] and call["reasoningEffort"] != expected_effort:
             errors.append("spawn requested effort mismatch")
 
@@ -1032,8 +1032,8 @@ def validate_public_events(events: list[dict[str, Any]], expected_role: str = DE
             child_values = metadata.get("effective") if isinstance(metadata.get("effective"), Mapping) else metadata
             child_model = _string(child_values.get("model")) if isinstance(child_values, Mapping) else ""
             child_effort = _string(child_values.get("reasoningEffort")) or (_string(child_values.get("reasoning_effort")) if isinstance(child_values, Mapping) else "")
-            if child_model and child_model != "gpt-5.6-luna":
-                errors.append("child effective model is not gpt-5.6-luna: " + identifier)
+            if child_model and child_model != "gpt-6-luna":
+                errors.append("child effective model is not gpt-6-luna: " + identifier)
             expected_effort = expected.removeprefix("adaptive_luna_")
             if child_effort and child_effort != expected_effort:
                 errors.append("child effective effort mismatch: " + identifier)

@@ -27,8 +27,10 @@ from zoneinfo import ZoneInfo
 from . import platform as _platform
 
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 RESOURCE = "codex-adaptive-agents"
+ROOT_MODEL = "gpt-6-astra"
+CHILD_MODEL = "gpt-6-luna"
 MODEL_DIAL_URL = "https://modeldial.com/api/v1/radar/latest.json"
 DENG_URL = "https://api.codexradar.com/api/v1/intelligence-efficiency?v=20260823-trend-cohort-v1"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -144,7 +146,8 @@ def _cfg() -> dict:
         "min_speedup": 0.20,
         "max_age_seconds": int(MAX_AGE.total_seconds()),
         "min_samples": 3,
-        "fallback_effort": "max",
+        "fallback_effort": "xhigh",
+        "child_model": CHILD_MODEL,
         "supported_efforts": list(EFFORTS),
         "category": CATEGORY,
         "runtime_route": RUNTIME_ROUTE,
@@ -243,7 +246,7 @@ def parse_modeldial(raw: bytes, now: datetime | None = None) -> dict:
     for item in rankings:
         if not isinstance(item, dict):
             raise PolicyError("modeldial schema unsupported or incomplete")
-        if item.get("model") != "gpt-5.6-luna":
+        if item.get("model") != CHILD_MODEL:
             continue
         score = item.get("score")
         maximum = item.get("maxScore", 0)
@@ -292,7 +295,7 @@ def parse_deng(raw: bytes, now: datetime | None = None) -> dict:
     for item in points:
         if not isinstance(item, dict):
             raise PolicyError("deng schema unsupported or incomplete")
-        if item.get("model") != "gpt-5.6-luna":
+        if item.get("model") != CHILD_MODEL:
             continue
         score = item.get("iq")
         if score is not None and (not _finite(score) or score < 0 or score > 150):
@@ -447,7 +450,7 @@ def _measurement_complete(measurement: dict, now: datetime, config: dict) -> boo
     score = measurement.get("score")
     maximum = measurement.get("score_max")
     return (
-        measurement.get("model") == "gpt-5.6-luna" and
+        measurement.get("model") == CHILD_MODEL and
         _supported(measurement.get("effort"), config) and
         measurement.get("category") == config.get("category") and
         measurement.get("route") == config.get("runtime_route") and
@@ -491,7 +494,7 @@ def _preserved_previous(now: datetime, previous: dict | None, config: dict) -> b
 
 
 def _decision(now: datetime, sources: list[dict], config: dict, previous: dict | None = None) -> dict:
-    fallback = config.get("fallback_effort", "max")
+    fallback = config.get("fallback_effort", "xhigh")
     decision = {
         "version": "",
         "generated_at": _stamp(now),
@@ -513,7 +516,7 @@ def _decision(now: datetime, sources: list[dict], config: dict, previous: dict |
     if not _supported(fallback, config):
         decision["status"] = "blocked"
         decision["default_effort"] = ""
-        raise PolicyError("fallback effort unavailable")
+        raise PolicyError("configured fallback effort unavailable: " + str(fallback))
     sources = [_copy(v) for v in sources if isinstance(v, dict)]
     decision["sources"] = sources
     degraded = len(sources) < 2
@@ -664,7 +667,7 @@ def _new_cache(now: datetime, config: dict) -> dict:
     return {
         "schema": 1, "attempted_days": {}, "last_attempt": _stamp(None), "last_success": _stamp(None),
         "capabilities_at": _stamp(None), "supported_efforts": [], "timezone": "", "day": "",
-        "last_status": decision["status"], "config_key": "", "policy": decision,
+        "last_status": decision["status"], "config_key": config_key(config), "policy": decision,
     }
 
 
@@ -706,8 +709,9 @@ def _read_snapshot_document(path: Path) -> dict:
         raise PolicyError("public capability snapshot unavailable") from None
     if not isinstance(value, dict):
         raise PolicyError("public capability snapshot unavailable")
-    allowed = {"schema", "checked_at", "supported_efforts", "root_model", "codex", "cli_version", "evidence"}
-    if set(value) - allowed or value.get("schema") != 1 or value.get("root_model") != "gpt-6-astra":
+    allowed = {"schema", "checked_at", "supported_efforts", "root_model", "child_model", "codex", "cli_version", "evidence"}
+    if (set(value) - allowed or value.get("schema") != 1 or
+            value.get("root_model") != ROOT_MODEL or value.get("child_model") != CHILD_MODEL):
         raise PolicyError("public capability snapshot unavailable")
     efforts = value.get("supported_efforts")
     if not _valid_efforts(efforts):
@@ -724,7 +728,7 @@ def _read_snapshot_document(path: Path) -> dict:
             raise PolicyError("public capability snapshot unavailable")
     result = {"schema": 1, "checked_at": _stamp(checked),
               "supported_efforts": _canonical_efforts(efforts),
-              "root_model": "gpt-6-astra"}
+              "root_model": ROOT_MODEL, "child_model": CHILD_MODEL}
     # The installer records public provenance. Preserve only the executable
     # path needed for a later local catalogue refresh; all other metadata stays
     # out of policy decisions and selector output.
@@ -763,15 +767,6 @@ def _cache_stale(cache: dict, now: datetime, config: dict) -> bool:
     return not _cache_fresh(now, cache.get("last_success"), age) or not _cache_fresh(now, cache.get("capabilities_at"), age)
 
 
-def _highest(efforts: object) -> str:
-    if not _valid_efforts(efforts):
-        return ""
-    for effort in reversed(EFFORTS):
-        if effort in efforts:
-            return effort
-    return ""
-
-
 def _future_cache(cache: dict, now: datetime) -> bool:
     for key in ("last_attempt", "last_success", "capabilities_at"):
         stamp = _time(cache.get(key))
@@ -800,7 +795,7 @@ def _usable(cache: dict, result_stale: bool, now: datetime, config: dict) -> boo
     wanted = policy.get("default_effort")
     if not _valid_efforts(efforts) or wanted not in efforts:
         return False
-    if status == "fallback" and wanted != _highest(efforts):
+    if status == "fallback" and wanted != config.get("fallback_effort"):
         return False
     if status != "fallback" and not _cache_fresh(now, cache.get("last_success"), age):
         return False
@@ -1086,15 +1081,13 @@ def select(home: Path, project: Path | None = None, *, force: bool = False, now:
             if latest is not None:
                 cache = latest
             previous_matches = cache.get("config_key") == config_key(base_config)
+            if not previous_matches:
+                # A model or policy identity change gets one fresh attempt for
+                # this local day. Do not carry supported efforts, capability
+                # timestamps, or scored evidence across identities.
+                cache = _new_cache(now, base_config)
             attempted = day_key in (cache.get("attempted_days") or {})
             if attempted and not force:
-                if not previous_matches:
-                    blocked = _copy(cache)
-                    blocked["policy"] = _copy(blocked.get("policy", {}))
-                    blocked["policy"]["status"] = "blocked"
-                    blocked["last_status"] = "blocked"
-                    blocked["policy"]["reasons"] = list(blocked["policy"].get("reasons") or []) + ["policy parameters changed; explicit refresh required"]
-                    return _result(blocked, now, base_config)
                 return _result(cache, now, base_config)
             attempted_days = cache.setdefault("attempted_days", {})
             attempted_days[day_key] = _stamp(now)
@@ -1128,19 +1121,12 @@ def select(home: Path, project: Path | None = None, *, force: bool = False, now:
                                 _valid_efforts(cache.get("supported_efforts")))
             if capability_fresh:
                 config["supported_efforts"] = list(cache["supported_efforts"])
-            fallback_adjusted = False
-            if not _supported(config.get("fallback_effort"), config):
-                for effort in reversed(EFFORTS):
-                    if _supported(effort, config):
-                        config["fallback_effort"] = effort
-                        fallback_adjusted = True
-                        break
             previous = cache.get("policy") if previous_matches else None
             try:
                 decision = _decision(now, sources, config, previous)
-            except PolicyError:
+            except PolicyError as error:
                 decision = {"version": "", "generated_at": _stamp(now), "default_effort": "", "status": "blocked",
-                            "reasons": ["fallback effort unavailable; automatic dispatch blocked"], "sources": sources,
+                            "reasons": [str(error) + "; automatic dispatch blocked"], "sources": sources,
                             "selected_evidence": [], "quality_effort": "", "conflict": False, "runtime_route": RUNTIME_ROUTE}
             if not capability_fresh:
                 decision["status"] = "blocked"
@@ -1148,8 +1134,6 @@ def select(home: Path, project: Path | None = None, *, force: bool = False, now:
                 decision["reasons"] = list(decision.get("reasons") or []) + ["local supported efforts unavailable or stale; automatic dispatch blocked"]
             if capability_fallback:
                 decision["reasons"] = list(decision.get("reasons") or []) + ["live local model catalog unavailable; used fresh public capability snapshot"]
-            if fallback_adjusted:
-                decision["reasons"] = list(decision.get("reasons") or []) + ["configured fallback unavailable; selected explicitly reported conservative effort " + config["fallback_effort"]]
             cache["policy"] = decision
             cache["last_status"] = decision.get("status", "blocked")
             for source in sources:
@@ -1211,11 +1195,11 @@ def _catalog_efforts(raw: bytes, *, require_full: bool = False) -> list[str]:
         if not isinstance(item, dict):
             raise PolicyError("unsupported public model catalogue schema")
         slug = item.get("slug")
-        if slug not in {"gpt-6-astra", "gpt-5.6-luna"}:
+        if slug not in {ROOT_MODEL, CHILD_MODEL}:
             continue
-        if slug == "gpt-5.6-luna" and luna_levels is not None:
+        if slug == CHILD_MODEL and luna_levels is not None:
             raise PolicyError("duplicate requested model in public catalogue")
-        if slug == "gpt-6-astra" and astra_levels is not None:
+        if slug == ROOT_MODEL and astra_levels is not None:
             raise PolicyError("duplicate requested model in public catalogue")
         levels = item.get("supported_reasoning_levels")
         if not isinstance(levels, list):
@@ -1227,7 +1211,7 @@ def _catalog_efforts(raw: bytes, *, require_full: bool = False) -> list[str]:
             efforts.append(level["effort"])
         if len(efforts) != len(set(efforts)):
             raise PolicyError("duplicate reasoning level")
-        if slug == "gpt-5.6-luna":
+        if slug == CHILD_MODEL:
             luna_levels = efforts
         else:
             astra_levels = efforts
@@ -1266,7 +1250,7 @@ def preflight(home: Path, codex: str, *, now: datetime | None = None) -> dict:
     cli = _check_cli_version(_stdout(_run_codex(home, [codex, "--version"], timeout=5, limit=65536)))
     efforts = _catalog_efforts(_stdout(_run_codex(home, [codex, "debug", "models"], timeout=5, limit=MAX_SOURCE_BYTES)), require_full=True)
     return {"schema": 1, "checked_at": _stamp(_utc(now)), "supported_efforts": efforts,
-            "root_model": "gpt-6-astra", "codex": codex, "cli_version": cli,
+            "root_model": ROOT_MODEL, "child_model": CHILD_MODEL, "codex": codex, "cli_version": cli,
             "evidence": "public_client_catalogue"}
 
 

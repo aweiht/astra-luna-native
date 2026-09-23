@@ -1,4 +1,4 @@
-# Codex Adaptive Agents 0.6.0
+# Codex Adaptive Agents 0.7.0
 
 **让 Astra 负责规划与验收，让原生 Luna 子 Agent 执行明确的独立任务。**
 
@@ -16,7 +16,7 @@ Codex Adaptive Agents 是一个为 Codex 安装协作规则、原生 Agent 角�
 
 ### 第一步：复制这段，让 Codex 安装
 
-安装会设置 Astra Max 主控默认值、Luna Max 子模型默认值，以及本项目的五个角色和协作规则；其他配置保留。
+安装会将子模型设为 `gpt-6-luna`，默认思考强度为 `xhigh`，并安装五个角色和协作规则；主窗口的模型、思考强度和其他配置保留。
 
 ```text
 请从 Codex Adaptive Agents 的项目仓库为我安装：
@@ -62,7 +62,7 @@ https://github.com/aweiht/codex-adaptive-agents
 ## 安装前准备
 
 - Python **3.11 或更新版本**。
-- 可运行的官方 Codex CLI **0.147.0 或更新版本**，以及支持原生自定义 Agent 的 Codex 客户端。CLI 的公开模型目录需要包含 Astra Max 与 Luna 的 `low / medium / high / xhigh / max` 五档。
+- 可运行的官方 Codex CLI **0.147.0 或更新版本**，以及支持原生自定义 Agent 的 Codex 客户端。CLI 的公开模型目录需要包含 Astra Max 与 `gpt-6-luna` 的 `low / medium / high / xhigh / max` 五档。
 - 日常使用和真实验收需要正常的 Codex 登录、所需模型访问权限及可用额度。安装检查模型目录，不代表账号一定能完成模型任务。
 - 网络能读取公开模型目录和选档数据源；用 Git 下载时还需 Git。也可以通过 GitHub 的 **Code → Download ZIP** 下载源码。
 
@@ -101,7 +101,7 @@ py -3 .\codex-adaptive-agents.py doctor
 
 `--dry-run` 仅用于 `install` 和 `uninstall`，展示改动计划；其他命令会在执行前拒绝该参数，包括 `verify --live` 和 `refresh`。`--yes` 应用当前计划并备份。默认安装目标是 `CODEX_HOME`，未设置时为用户目录下的 `.codex`。安装到已有 Codex 使用的同一个目录，避免把空白目录当成已登录环境。
 
-**安装会修改哪些内容？** 它设置受管的 Astra Max 主控默认值、Luna Max 子模型默认值和最多五个并发子 Agent，安装五个 Luna 角色、协作规则与 Python 运行脚本。其他配置、角色和规则保留；受管文件发生冲突时会拒绝覆盖。修改前先建立备份。
+**安装会修改哪些内容？** 它设置 `gpt-6-luna` 子模型、默认 `xhigh` 和最多五个并发子 Agent，安装五个 Luna 角色、协作规则与 Python 运行脚本。其他配置、角色和规则保留；受管文件发生冲突时会拒绝覆盖。修改前先建立备份。
 
 使用不同 Codex home 或 CLI 路径时，把下面的参数加到命令中：
 
@@ -117,7 +117,7 @@ python3 codex-adaptive-agents.py --codex-home /path/to/codex-home --codex /path/
 
 主 Agent 负责需求、关键决策、公共接口、协调和最终验收。实质工作开工前只做足够确定边界的少量探索，使用者不需要手动启动 worker，也不必先运行选档命令。
 
-委派前脚本按**系统本地自然日**选择一个支持的 Luna 档位；项目缓存保存在 `.codex-adaptive-agents/state`。请将 `.codex-adaptive-agents/` 加入业务项目的 `.gitignore`。外部数据不够可比时会明确使用保守的 Max 回退，不保证降档、省钱或提速。
+委派前脚本按**系统本地自然日**选择一个支持的 Luna 档位；项目缓存保存在 `.codex-adaptive-agents/state`。请将 `.codex-adaptive-agents/` 加入业务项目的 `.gitignore`。网站查不到 GPT-6 Luna 评分、请求失败或评分无法可靠比较时，默认回退到 `xhigh`；仍须通过本机模型能力检查，不保证降档、省钱或提速。
 
 ### 委派门槛与例子
 
@@ -162,16 +162,16 @@ python3 codex-adaptive-agents.py doctor
 python3 codex-adaptive-agents.py select --project .
 ```
 
-Windows 把 `python3` 换成 `py -3`。`doctor` 检查本地安装，不调用模型、不联网。`select` 只选择角色，必要时刷新公开数据；输出 `adaptive_luna_max` 等角色名，**不会启动 Luna**。
+Windows 把 `python3` 换成 `py -3`。`doctor` 检查本地安装，不调用模型、不联网。`select` 只选择角色，必要时刷新公开数据；输出 `adaptive_luna_xhigh` 等角色名，**不会启动 Luna**。
 
 ![实际 doctor 和 select 命令输出摘录](docs/images/cli-check.svg)
 
-*这是 2026-09-20 本地 0.6.0 安装的实际 doctor 和 select 输出摘录，省略私有路径。它说明安装与选档检查结果，不是 Codex 窗口截图，也不是模型任务验收。*
+*这是 2026-09-23 本地 0.7.0 安装的实际 doctor 和 select 输出摘录，省略私有路径。它说明安装与选档检查结果，不是 Codex 窗口截图，也不是模型任务验收。*
 
 | 输出 | 含义与下一步 |
 | --- | --- |
 | `READY` | 本地安装、能力快照和选档状态通过，可以开始新 Codex 任务。 |
-| `READY_FALLBACK` | 本地检查通过，当前使用支持的保守回退档位；可继续使用。 |
+| `READY_FALLBACK` | 本地检查通过，评分不可用，当前使用本机支持的 `xhigh` 回退档位；可继续使用。 |
 | `NOT_READY` | 检查未通过，查看 `errors`；缓存过期时运行 `refresh`，再运行 `doctor`。 |
 | `INSTALLED_NEEDS_REFRESH` | 文件已安装，但选档未准备好；运行 `refresh` 后重新检查。 |
 
@@ -212,7 +212,7 @@ python3 codex-adaptive-agents.py verify --live
 | 某个项目同一天选档失败后仍被阻塞 | 运行 `python3 codex-adaptive-agents.py refresh --project /path/to/project`，再对同一项目运行 `select --explain`；不带 `--project` 的 `refresh` 只更新 home 级策略。 |
 | 修改过受管角色后升级失败 | 保留改动，检查冲突并决定如何合并；不要直接覆盖文件或安装凭据。 |
 | 安装后没有使用 Luna | 先开始新 Codex 任务；简单任务直接完成是正常情况。需要独立验收时使用显式的 `verify --live`。 |
-| Windows / Linux 的真实模型任务是否已验证？ | 本轮没有请求新的 live 模型验收；历史 CI 只对其具体提交有效，不代表当前 0.6.0。详见[验证记录](docs/VALIDATION.md)。 |
+| Windows / Linux 的真实模型任务是否已验证？ | 本轮没有请求新的 live 模型验收；历史 CI 只对其具体提交有效，不代表当前 0.7.0。详见[验证记录](docs/VALIDATION.md)。 |
 
 ## 更新、卸载与恢复
 
@@ -247,10 +247,10 @@ python3 codex-adaptive-agents.py uninstall --yes
 
 ```sh
 python3 -m unittest discover -s tests_python -p 'test_*.py' -v
-python3 scripts/release_python.py --output-dir dist/0.6.0-python
+python3 scripts/release_python.py --output-dir dist/0.7.0-python
 ```
 
-打包目录须是新的，脚本不会覆盖已有发行包。源码包包含中英文文档、运行图片、测试和校验和。本轮 0.6.0 的证据受具体源码修订和环境限制；没有请求新的 live 模型验收，历史 CI 也不代表当前源码。详见[验证记录](docs/VALIDATION.md)与[贡献指南](CONTRIBUTING.md)。
+打包目录须是新的，脚本不会覆盖已有发行包。源码包包含中英文文档、运行图片、测试和校验和。本轮 0.7.0 的证据受具体源码修订和环境限制；没有请求新的 live 模型验收，历史 CI 也不代表当前源码。详见[验证记录](docs/VALIDATION.md)与[贡献指南](CONTRIBUTING.md)。
 
 ## 许可与实现
 

@@ -3,6 +3,33 @@
 Evidence applies to a specific source revision and environment. Offline tests
 and local readiness do not establish model access or quota on another machine.
 
+## 0.7.0: GPT-6 Luna and xhigh fallback
+
+On 2026-09-23, the complete offline suite ran **101 tests: 100 passed, one
+Linux-only test skipped**, on macOS arm64 / Python 3.14.6. Tests cover missing
+scores, old-model radar rows, exact-model cache identity, same-day migration,
+failed capability probes, and preserving rating-based choices. Installation
+coverage includes 0.6.0 roles using `gpt-5.6-luna`, upgrade to `gpt-6-luna`,
+root setting preservation, strict child configuration conflicts, rollback, and
+uninstall. Public-event validation rejects the previous child model while
+accepting explicitly selected supported reasoning levels.
+
+The existing local installation was upgraded with a reviewed plan and backup.
+All five role files now specify `gpt-6-luna`; the default child effort is
+`xhigh`. The root Astra/xhigh settings, unrelated configuration, other roles,
+and instructions outside the managed block were preserved. All 16 installed
+runtime files match source, and a repeat installation plan has zero changes.
+The official CLI 0.155.1 public catalogue exposes GPT-6 Luna with all five
+configured reasoning levels. Actual `doctor` returned **READY_FALLBACK** and
+`select` returned **adaptive_luna_xhigh**, because comparable radar evidence
+was insufficient.
+
+These checks establish local installation and selection readiness. Two native
+children were requested as GPT-6 Luna/xhigh for development work; no separate
+`verify --live` acceptance was run. This revision has not been validated by a
+new Windows/Linux CI run or published release. Earlier results below remain
+historical evidence for their stated revisions.
+
 ## 2026-09-22 delegation-policy trial
 
 The parent and leaf templates plus the English and Simplified Chinese public

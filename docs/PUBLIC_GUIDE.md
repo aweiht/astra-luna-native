@@ -1,6 +1,6 @@
 # Codex Adaptive Agents public operator guide
 
-**0.6.0 status: SOURCE_READY.** Codex Adaptive Agents uses the project
+**0.7.0 status: SOURCE_READY.** Codex Adaptive Agents uses the project
 repository at <https://github.com/aweiht/codex-adaptive-agents>. The package
 contains the Python source used at runtime. No new live model verification was
 requested for this revision. Consult [VALIDATION.md](VALIDATION.md) for current
@@ -138,10 +138,12 @@ project immediately, including a failed attempt earlier that day. Without
 --project, refresh updates home-level policy state. Both forms refresh the
 global public capability snapshot and leave unrelated project caches intact.
 
-If public sources are unavailable, the selector retains a valid verified cache
-or uses the conservative supported max role when the local capability directory
-allows it. The result reports the fallback reason and does not claim that a
-dynamic update succeeded.
+The child model is `gpt-6-luna`. If public sources have no usable scores for
+this exact model, the selector retains a still-valid verified cache or falls
+back to `xhigh` when the local capability catalogue supports it. Older Luna
+model scores and caches cannot select a GPT-6 Luna role. Missing model access
+or stale capabilities remain readiness failures, not scoring fallbacks. The
+result reports why fallback was used and does not claim a dynamic update succeeded.
 
 ## Delegation gate
 

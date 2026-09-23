@@ -1,6 +1,6 @@
 # Contributing
 
-Codex Adaptive Agents 0.6.0 is a Python 3.11+ standard-library distribution.
+Codex Adaptive Agents 0.7.0 is a Python 3.11+ standard-library distribution.
 Keep changes small, observable, and compatible with the official Codex CLI. The
 runtime does not add a daemon, MCP server, lifecycle Hook, background
 scheduler, or provider switch.
@@ -8,7 +8,7 @@ scheduler, or provider switch.
 ## Development requirements
 
 Use Python 3.11 or newer. The project has no pip dependencies, compiled
-binary, or Go requirement for the 0.6.0 runtime and source package.
+binary, or Go requirement for the 0.7.0 runtime and source package.
 
 Run the repository checks before proposing a change:
 
@@ -27,7 +27,7 @@ py -3 scripts/release_python.py --output-dir "$env:TEMP\codex-adaptive-agents-re
 The release test builds in an isolated temporary directory and checks the ZIP
 member set, package checksums, external checksums, safe links, and refusal to
 overwrite an existing archive. Do not use the repository historical dist
-packages as current 0.6.0 evidence.
+packages as current 0.7.0 evidence.
 
 ## Release packaging
 

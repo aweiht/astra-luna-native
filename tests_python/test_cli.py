@@ -84,7 +84,7 @@ if args == ['--version']: print('codex-cli 0.147.0')
 elif args == ['debug','models']:
  print(json.dumps({'models': [
   {'slug':'gpt-6-astra','supported_reasoning_levels':[{'effort':'max'}]},
-  {'slug':'gpt-5.6-luna','supported_reasoning_levels':[{'effort':e} for e in ('low','medium','high','xhigh','max')]}
+  {'slug':'gpt-6-luna','supported_reasoning_levels':[{'effort':e} for e in ('low','medium','high','xhigh','max')]}
  ]}))
 else: sys.exit(2)
 ''', encoding='utf-8')
@@ -152,9 +152,9 @@ runpy.run_path(entry,run_name='__main__')
                               sys.executable, '-c', 'raise RuntimeError("must not execute")', expect=1)
             self.assertEqual(rejected['status'], 'ERROR')
             selected = invoke(entry, 'select', '--project', str(project), '--explain')
-            self.assertEqual(selected['role'], 'adaptive_luna_max')
+            self.assertEqual(selected['role'], 'adaptive_luna_xhigh')
             self.assertFalse(invoke(entry, 'select', '--project', str(project), '--explain')['refreshed'])
-            self.assertEqual(invoke(entry, 'refresh')['role'], 'adaptive_luna_max')
+            self.assertEqual(invoke(entry, 'refresh')['role'], 'adaptive_luna_xhigh')
             self.assertEqual(invoke(entry, 'install', '--yes')['status'], 'IDEMPOTENT_PASS')
             self.assertEqual(invoke(entry, 'uninstall', '--yes')['status'], 'UNINSTALLED')
             self.assertFalse(entry.exists())
@@ -185,7 +185,7 @@ runpy.run_path(entry,run_name='__main__')
                     patch.object(policy, 'FetchSources', return_value=[]), \
                     patch.object(policy, 'DirectSupportedEfforts', return_value=list(policy.EFFORTS)):
                 other = policy.select(home, other_project, now=now)
-            self.assertEqual(other['role'], 'adaptive_luna_max')
+            self.assertEqual(other['role'], 'adaptive_luna_xhigh')
             other_cache = other_project / '.codex-adaptive-agents/state/policy-cache.json'
             other_before = other_cache.read_bytes()
 
@@ -194,6 +194,7 @@ runpy.run_path(entry,run_name='__main__')
                 'checked_at': policy._stamp(now),
                 'supported_efforts': list(policy.EFFORTS),
                 'root_model': 'gpt-6-astra',
+                'child_model': 'gpt-6-luna',
                 'codex': str(fake_codex),
                 'cli_version': 'codex-cli 0.147.0',
                 'evidence': 'public_client_catalogue',
@@ -235,7 +236,7 @@ runpy.run_path(entry,run_name='__main__')
                 ])
 
             self.assertEqual(refresh_rc, 0)
-            self.assertEqual(json.loads(output.getvalue())['role'], 'adaptive_luna_max')
+            self.assertEqual(json.loads(output.getvalue())['role'], 'adaptive_luna_xhigh')
             self.assertEqual(calls, [{
                 'home': str(home),
                 'project': str(project),
@@ -249,7 +250,7 @@ runpy.run_path(entry,run_name='__main__')
                     patch.object(policy, 'DirectSupportedEfforts',
                                  side_effect=AssertionError('same-day select must use project cache')):
                 recovered = original_select(home, project, now=now)
-            self.assertEqual(recovered['role'], 'adaptive_luna_max')
+            self.assertEqual(recovered['role'], 'adaptive_luna_xhigh')
             self.assertFalse(recovered['refreshed'])
 
 

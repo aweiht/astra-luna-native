@@ -46,7 +46,7 @@ for raw in sys.stdin.buffer:
 '''
 
 
-def good_events() -> list[dict]:
+def good_events(role="adaptive_luna_xhigh", effort="xhigh") -> list[dict]:
     # Keep root/thread-started before root/client-effective to cover the
     # ordering seen in the public app-server stream.
     events: list[dict] = [
@@ -114,11 +114,13 @@ def good_events() -> list[dict]:
                     "thread": {
                         "id": child,
                         "parentThreadId": "root",
-                        "agentRole": "adaptive_luna_max",
+                        "agentRole": role,
+                        "model": "gpt-6-luna",
+                        "reasoningEffort": effort,
                         "status": {"type": "idle"},
                         "spawn": {
                             "parent_thread_id": "root",
-                            "agent_role": "adaptive_luna_max",
+                            "agent_role": role,
                             "depth": 1,
                         },
                     },
@@ -139,7 +141,7 @@ def good_events() -> list[dict]:
 
 class VerifyPublicEventsTests(unittest.TestCase):
     @staticmethod
-    def _collab_events(*, tool="spawnAgent", model="gpt-5.6-luna", effort="max") -> list[dict]:
+    def _collab_events(*, tool="spawnAgent", model="gpt-6-luna", effort="xhigh") -> list[dict]:
         item = {
             "id": "call-spawn",
             "type": "collabAgentToolCall",
@@ -158,12 +160,13 @@ class VerifyPublicEventsTests(unittest.TestCase):
         ]
 
     def test_spawn_requested_model_effort_binds_role_and_allows_repeated_events(self) -> None:
-        events = good_events()
-        events[3:3] = self._collab_events()
+        events = good_events("adaptive_luna_max", "max")
+        events[3:3] = self._collab_events(effort="max")
         result = verify.validate_public_events(events, "adaptive_luna_max")
         self.assertTrue(result["ok"], result)
 
-        for field, value in (("model", "different-model"), ("reasoningEffort", "low")):
+        for field, value in (("model", "different-model"), ("model", "gpt-5.6-luna"),
+                             ("reasoningEffort", "low")):
             with self.subTest(field=field):
                 mutated = deepcopy(events)
                 next(
@@ -174,13 +177,13 @@ class VerifyPublicEventsTests(unittest.TestCase):
                 self.assertFalse(result["ok"], result)
 
     def test_non_spawn_collab_model_effort_does_not_bind_role(self) -> None:
-        events = good_events()
+        events = good_events("adaptive_luna_max", "max")
         events[3:3] = self._collab_events(tool="sendInput", model="different-model", effort="low")
         result = verify.validate_public_events(events, "adaptive_luna_max")
         self.assertTrue(result["ok"], result)
 
     def test_transport_metadata_keeps_child_effective_conflict_visible(self) -> None:
-        events = deepcopy(good_events())
+        events = deepcopy(good_events("adaptive_luna_max", "max"))
         for event in events:
             if event.get("event") == "child/public-metadata":
                 event["thread"] = transport.metadata(
@@ -263,7 +266,7 @@ class VerifyPublicEventsTests(unittest.TestCase):
                 self.assertFalse(verify.validate_public_events(events)["ok"])
 
     def test_accepts_strict_success_and_reports_actual_overlap(self) -> None:
-        result = verify.validate_public_events(good_events(), "adaptive_luna_max")
+        result = verify.validate_public_events(good_events("adaptive_luna_max", "max"), "adaptive_luna_max")
         self.assertTrue(result["ok"], result)
         self.assertEqual(result["native_child_ids"], ["child-a", "child-b"])
         self.assertEqual(result["overlap_seconds"], 2.0)
@@ -271,7 +274,7 @@ class VerifyPublicEventsTests(unittest.TestCase):
 
     def test_rejects_known_false_positive_evidence(self) -> None:
         mutations = {
-            "rootwrongmodel": lambda events: events[1]["metadata"].update(model="gpt-5.6-luna"),
+            "rootwrongmodel": lambda events: events[1]["metadata"].update(model="gpt-6-luna"),
             "missingchildturn": lambda events: next(
                 event for event in events if event.get("event") == "turn/completed" and event.get("threadId") == "child-a"
             ).pop("turn"),
@@ -296,7 +299,7 @@ class VerifyPublicEventsTests(unittest.TestCase):
         }
         for name, mutate in mutations.items():
             with self.subTest(name=name):
-                events = deepcopy(good_events())
+                events = deepcopy(good_events("adaptive_luna_max", "max"))
                 mutate(events)
                 result = verify.validate_public_events(events, "adaptive_luna_max")
                 self.assertFalse(result["ok"], result)
