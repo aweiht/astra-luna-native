@@ -7,7 +7,9 @@ import hashlib
 import importlib.util
 import os
 from pathlib import Path
+import shlex
 import stat
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -20,6 +22,41 @@ SPEC = importlib.util.spec_from_file_location("release_python", ROOT / "scripts"
 assert SPEC is not None and SPEC.loader is not None
 release = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(release)
+
+
+def workflow_archive_check_command() -> list[str]:
+    """Extract the Python command from the GitHub Actions folded run block."""
+    lines = (ROOT / ".github" / "workflows" / "native.yml").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    step = next(
+        index for index, line in enumerate(lines)
+        if line.strip() == "- name: Verify ZIP output"
+    )
+    run = next(
+        index for index in range(step + 1, len(lines))
+        if lines[index].lstrip().startswith("run:")
+    )
+    command_lines = []
+    for line in lines[run + 1 :]:
+        if line.strip() and len(line) - len(line.lstrip()) < 10:
+            break
+        command_lines.append(line.strip())
+    command = " ".join(part for part in command_lines if part)
+    arguments = shlex.split(command)
+    if len(arguments) < 3 or arguments[:2] != ["python", "-c"]:
+        raise AssertionError("Verify ZIP output must run an inline Python command")
+    return [sys.executable, *arguments[1:]]
+
+
+def run_workflow_archive_check(cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        workflow_archive_check_command(),
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
 
 
 class ReleaseBuilderTest(unittest.TestCase):
@@ -69,7 +106,11 @@ class ReleaseBuilderTest(unittest.TestCase):
     def test_current_source_build_is_allowlisted_and_validated(self):
         manifest = release.load_manifest()
         with tempfile.TemporaryDirectory(prefix="release-package-") as temporary:
-            output = Path(temporary) / "output"
+            root_dir = Path(temporary)
+            (root_dir / "VERSION").write_text(
+                (ROOT / "VERSION").read_text(encoding="utf-8"), encoding="utf-8"
+            )
+            output = root_dir / "release-ci"
             archive, external = release.build_release(output)
             self.assertTrue(archive.is_file())
             self.assertTrue(external.is_file())
@@ -98,6 +139,62 @@ class ReleaseBuilderTest(unittest.TestCase):
 
             digest = hashlib.sha256(archive.read_bytes()).hexdigest()
             self.assertIn(digest + "  " + archive.name, external.read_text(encoding="utf-8"))
+
+            result = run_workflow_archive_check(root_dir)
+            self.assertEqual(result.returncode, 0, msg=result.stderr)
+            external.unlink()
+            missing_checksum = run_workflow_archive_check(root_dir)
+            self.assertNotEqual(missing_checksum.returncode, 0)
+            self.assertIn("AssertionError", missing_checksum.stderr)
+
+    def test_workflow_archive_check_rejects_missing_or_invalid_packages(self):
+        version = (ROOT / "VERSION").read_text(encoding="utf-8").strip()
+        expected_root = f"codex-adaptive-agents-{version}-python/"
+        with tempfile.TemporaryDirectory(prefix="release-ci-reject-") as temporary:
+            root_dir = Path(temporary)
+            (root_dir / "VERSION").write_text(version + "\n", encoding="utf-8")
+            output = root_dir / "release-ci"
+            output.mkdir()
+            (output / "SHA256SUMS").write_text("", encoding="utf-8")
+
+            missing = run_workflow_archive_check(root_dir)
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn("AssertionError", missing.stderr)
+
+            mismatch_version = "0.0.0" if version != "0.0.0" else "0.0.1"
+            mismatch_root = f"codex-adaptive-agents-{mismatch_version}-python/"
+            wrong_name = output / f"codex-adaptive-agents-{mismatch_version}-python.zip"
+            with zipfile.ZipFile(wrong_name, "w") as package:
+                package.writestr(mismatch_root + "codex-adaptive-agents.py", "")
+                package.writestr(mismatch_root + "SHA256SUMS", "")
+            wrong_version_result = run_workflow_archive_check(root_dir)
+            self.assertNotEqual(wrong_version_result.returncode, 0)
+            self.assertIn("AssertionError", wrong_version_result.stderr)
+            wrong_name.unlink()
+
+            wrong_root = output / f"codex-adaptive-agents-{version}-python.zip"
+            with zipfile.ZipFile(wrong_root, "w") as package:
+                package.writestr("wrong-root/codex-adaptive-agents.py", "")
+                package.writestr("wrong-root/SHA256SUMS", "")
+            wrong_contents = run_workflow_archive_check(root_dir)
+            self.assertNotEqual(wrong_contents.returncode, 0)
+            self.assertIn("AssertionError", wrong_contents.stderr)
+            wrong_root.unlink()
+
+            with zipfile.ZipFile(wrong_root, "w") as package:
+                package.writestr(expected_root + "codex-adaptive-agents.py", "")
+            missing_package_checksum = run_workflow_archive_check(root_dir)
+            self.assertNotEqual(missing_package_checksum.returncode, 0)
+            self.assertIn("AssertionError", missing_package_checksum.stderr)
+
+            for forbidden_path in ("__pycache__/rogue.pyc", "rogue.pyc"):
+                with zipfile.ZipFile(wrong_root, "w") as package:
+                    package.writestr(expected_root + "codex-adaptive-agents.py", "")
+                    package.writestr(expected_root + "SHA256SUMS", "")
+                    package.writestr(expected_root + forbidden_path, "")
+                pycache = run_workflow_archive_check(root_dir)
+                self.assertNotEqual(pycache.returncode, 0)
+                self.assertIn("AssertionError", pycache.stderr)
 
     def test_existing_archive_is_never_replaced(self):
         manifest = release.load_manifest()
