@@ -201,6 +201,13 @@ unresolved after reasonable repair, or a capability or permission limit blocks
 the package. Astra independently checks cross-module integration and
 high-risk permission, data, or process behavior before final acceptance.
 
+Long tests, polling, sampling, and ordinary failure handling stay in that same
+Luna package. Scripts or native waits perform ongoing monitoring. Astra's
+normal review reads the handoff summary, relevant diff, and specific artifacts
+without repeating the same full exploration or tests; it expands checks only
+for completion, a clear exception or threshold, a pending decision, or a risk
+signal.
+
 Direct completion is suitable for a simple question, a genuinely one-off small
 change, a root-only decision, a tightly coupled dependency chain with no safe
 independent boundary, or an explicit no-delegation request. Do not split a
@@ -247,28 +254,41 @@ Astra/Luna: delegated · luna_max ×2 · parallel
 These examples show the format, not a live run. Child levels and counts come
 from actual dispatches; the root displays its known model name only. The
 summary does not read or report the current window's reasoning-effort setting.
-For substantive work, keep the handoff context minimal and accurate and prefer
-bounded, history-free context. Return five concise points: completed work, file
-or artifact locations, verification evidence, unresolved issues, and pending
-decisions. Keep detailed logs at the agreed local path for on-demand reading;
-do not omit failures or risks. While a child runs, the root may work on a
-different, non-overlapping task and waits when no such work remains. State the
-delegation or direct-completion reason in one sentence in the plan or progress
-update. Keep this compact footer and do not create a separate delegation report
-file.
+Each package states its full goal, boundary, ownership, acceptance checks, and
+the local context needed to do the work. Prefer bounded, history-free handoffs
+without unrelated history. The execution owner reports startup once, delivers
+once, and reports exceptions, thresholds, or decisions when they arise. If an
+interim user update is required, use known state; do not reread unchanged logs
+or snapshots to produce it. A native wait timeout ends only that wait interval
+and does not remove any host turn. The child returns five concise points:
+completed work, file or artifact locations, verification evidence, unresolved
+issues, and pending decisions. Keep detailed logs at the agreed local path for
+on-demand reading; do not omit failures or risks. The root waits on the same
+native task and works only on different, non-overlapping work while it runs.
+State the delegation or direct-completion reason in one sentence in the plan or
+progress update. Keep this compact footer and do not create a separate
+delegation report file.
 
 ### Temporary process and long command runs
 
 Ordinary short commands need no process ledger. For a temporary service or a
 bounded long command, the root creates one isolated run and passes its `run_id`,
 project, entry point, owner, purpose, and resource or port boundary to each
-child. The child reports the startup `entry_id` and PID promptly, stops its own
-command or execution session, and reports explicitly retained work as
-`RETAINED`; the root performs the final check, cleanup, and post-cleanup check.
-The run rejects new commands after cleanup, while retained entries can be
-checked or cleaned again in the same run. See the [public process operations
-guide](docs/PUBLIC_GUIDE.md#temporary-process-and-long-command-runs) for
-copyable POSIX and PowerShell commands, output semantics, and limits.
+child. Use `--summary --timeout <seconds>` for a long test: the completion
+summary gives status, exit result, registered run/entry identifiers and PID,
+captured byte counts, and private log paths, without stdout/stderr text.
+Without `--summary`, the original completion JSON with output text remains
+available. Combined stdout and stderr capture is capped at 2 MiB; exceeding the
+cap fails and can leave partial logs. Treat `output_complete=false` as partial
+evidence. The command or native wait owns ongoing monitoring; do not repeat
+`process-check` without a state change, but make a targeted check for an
+exception, identity doubt, or lost supervision. The child reports startup
+`entry_id` and PID once, stops its own command or execution session, and reports
+explicitly retained work as `RETAINED`; the root performs the final check,
+cleanup, and post-cleanup check. The run rejects new commands after cleanup,
+while retained entries can be checked or cleaned again in the same run. See the [public
+process operations guide](docs/PUBLIC_GUIDE.md#temporary-process-and-long-command-runs)
+for copyable POSIX and PowerShell commands, output semantics, and limits.
 
 ## Installation scope and backups
 

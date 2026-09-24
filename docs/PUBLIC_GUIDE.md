@@ -166,6 +166,13 @@ capability or permission limit. The root independently checks cross-module
 integration and high-risk permission, data, or process behavior before final
 acceptance.
 
+Long tests, polling, sampling, and ordinary failure handling remain in that
+same Luna package. Use a script or native wait for ongoing monitoring. The root
+normally reviews the handoff summary, relevant diff, and specific artifacts;
+it does not repeat the same full exploration or tests. Expand checks only for
+completion, a clear exception or threshold, a pending decision, or a risk
+signal.
+
 Direct completion is appropriate for a simple question, a genuinely one-off
 small change, a root-only decision, a tightly coupled dependency chain with no
 safe independent boundary, or an explicit no-delegation request. Do not split a
@@ -197,15 +204,22 @@ report the actual returned error and do not claim unavailability without
 evidence. A successful selection is not a child-agent invocation. These are
 instructions for the agent, not a host-enforced guarantee of delegation.
 
-For substantive work, keep the context minimal and accurate and prefer bounded,
-history-free handoffs. The child returns five concise points: completed work,
-file or artifact locations, verification evidence, unresolved issues, and
-pending decisions. Keep detailed logs at the agreed local path for on-demand
-reading; do not omit failures or risks. The root may work on a different,
-non-overlapping task while a child runs and waits when no such work remains.
-Record the delegation or direct-completion reason in one sentence in the plan or
-progress update and keep the compact execution footer. Do not create a separate
-delegation report file.
+Each work package states its full goal, boundary, artifact or problem
+ownership, acceptance checks, and necessary local context. Prefer bounded,
+history-free handoffs without unrelated history. The execution owner reports
+startup once, delivers once, and reports exceptions, thresholds, or decisions
+when they arise. If an interim user update is required, use known state; do not
+reread unchanged logs or snapshots to produce it. A native wait timeout ends
+only that wait interval and does not remove a host turn. The child returns five
+concise points: completed work, file or artifact locations, verification
+evidence, unresolved issues, and pending decisions. Keep detailed logs at the
+agreed local path for on-demand reading; do not omit failures or risks. The
+root waits on the same native task and works only on different,
+non-overlapping work while it runs. Record the delegation or direct-completion
+reason in one sentence in the plan or progress update and keep the compact
+execution footer. Do not create a separate delegation report file. After
+declaring work stopped or complete, the child stops writing; further repair
+starts only after the root reassigns it.
 
 ## Temporary process and long command runs
 
@@ -221,7 +235,7 @@ entry="$codex_home/codex-adaptive-agents/runtime/codex-adaptive-agents.py"
 python3 "$entry" --codex-home "$codex_home" process-init --project /path/to/project
 python3 "$entry" --codex-home "$codex_home" process-run \
   --project /path/to/project --run-id <run_id> --owner <owner> \
-  --purpose "<purpose>" -- <command> <arg>
+  --purpose "long test" --summary --timeout 3600 -- python3 -m unittest
 python3 "$entry" --codex-home "$codex_home" process-check \
   --project /path/to/project --run-id <run_id>
 python3 "$entry" --codex-home "$codex_home" process-cleanup \
@@ -233,16 +247,28 @@ a default 600-second timeout; it records the real process identity and purpose
 before starting, then flushes a startup event to stderr. It reclaims the command
 when it exits or times out and does not create a resident service. When the
 command completes, stdout contains one JSON object. `process-run` is
-non-interactive: stdin is closed, combined command stdout and stderr are capped
-at 2 MiB, `--timeout` defaults to 600 seconds and accepts at most 86400 seconds,
-and captured command output is returned in the completion JSON. While it is
-running, read an independent snapshot with `process-check` in another window;
-do not treat ordinary startup text as the ledger. A child reports its `entry_id` and PID from
-the startup event or that snapshot, along with purpose and validation, promptly;
-it must not wait for the completion JSON. It stops its own execution session or
-command. If a task explicitly authorizes a retained service, report it as
-`RETAINED` with its purpose; a run with retained
-entries is not `CLEAN`.
+non-interactive: stdin is closed, combined stdout and stderr capture is capped
+at 2 MiB, and `--timeout` accepts at most 86400 seconds. Exceeding the output
+cap fails the command and can leave logs incomplete. Use `--summary` for long
+tests and other high-output commands, with an explicit `--timeout` within the
+task's authorized duration. The summary returns status, exit result, registered
+run/entry identifiers and PID, captured byte counts, and private log paths,
+without stdout/stderr text. Without `--summary`, the original completion JSON
+with output text remains compatible. Captured logs stay in the private run
+directory; inspect only the diagnostic portions needed. If `output_complete`
+is false, treat the logs as partial evidence and do not call them complete.
+
+The command or a native wait performs ongoing monitoring. Do not reread an
+unchanged log or repeat `process-check` without a state change; a targeted
+check is appropriate for a clear exception, process identity doubt, or lost
+supervision. The root still performs its independent final `process-check` and
+cleanup sequence. A native wait timeout means only that the wait interval
+ended, not that the work failed. Do not turn an interim user update into
+another status read. The execution owner reports the startup `entry_id` and
+PID once, then delivers results at completion or reports a clear exception,
+threshold, or pending decision. If a task explicitly authorizes a retained
+service, report it as `RETAINED` with its purpose; a run with retained entries
+is not `CLEAN`.
 
 After every participant has stopped starting commands, the root performs the
 independent final `process-check` and `process-cleanup`, then runs a second
@@ -268,7 +294,7 @@ On Windows PowerShell, use the same Codex home and replace `python3` with
 $CodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE ".codex" }
 $Entry = Join-Path $CodexHome "codex-adaptive-agents\runtime\codex-adaptive-agents.py"
 py -3 $Entry --codex-home $CodexHome process-init --project C:\path\to\project
-py -3 $Entry --codex-home $CodexHome process-run --project C:\path\to\project --run-id <run_id> --owner <owner> --purpose "<purpose>" -- <command> <arg>
+py -3 $Entry --codex-home $CodexHome process-run --project C:\path\to\project --run-id <run_id> --owner <owner> --purpose "long test" --summary --timeout 3600 -- py -3 -m unittest
 py -3 $Entry --codex-home $CodexHome process-check --project C:\path\to\project --run-id <run_id>
 py -3 $Entry --codex-home $CodexHome process-cleanup --project C:\path\to\project --run-id <run_id> [--retain <entry_id>,<entry_id>]
 ~~~

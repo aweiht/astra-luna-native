@@ -3,6 +3,32 @@
 Evidence applies to a specific source revision and environment. Offline tests
 and local readiness do not establish model access or quota on another machine.
 
+## 2026-09-24: compact process output and execution handoffs
+
+The complete offline suite ran **106 tests: 105 passed, one Linux-only test
+skipped**, on macOS arm64 / Python 3.14.6. The focused process and CLI suite
+passed 22 tests, including default-output compatibility, nonzero exits,
+timeouts, output overflow, partial log writes, unsafe log paths, and rejecting
+`--summary` for other commands.
+
+The installed runtime was exercised with the same real command in full and
+summary modes. Each command produced 30 samples over at least 15 seconds,
+with 245,760 stdout bytes and 16 stderr bytes. Completion JSON measured
+246,076 bytes in full mode and 812 bytes in summary mode; saved log bytes
+matched the full output exactly. Each invocation emitted one startup event
+and one completion JSON, with no agent reads of intermediate progress.
+These are output-size measurements, not model-token savings or evidence of
+a changed daily Astra/Luna usage ratio.
+
+An isolated upgrade, exact rollback, reapply, repeat installation, and
+uninstall preserved user settings and instructions. The reviewed local
+installation changed no configuration keys; unrelated roles and instructions
+outside the managed block were preserved. All 16 runtime files match source,
+a repeat installation plan has no changes, and `doctor` reports
+**READY_FALLBACK**. Two native Luna/xhigh children handled implementation and
+documentation; no separate `verify --live` test was run. This new revision
+has not yet run on Windows or Linux CI.
+
 ## 0.7.0: GPT-6 Luna and xhigh fallback
 
 On 2026-09-23, the complete offline suite ran **101 tests: 100 passed, one

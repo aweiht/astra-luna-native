@@ -2,6 +2,10 @@
 
 ## 0.7.0 — Unreleased
 
+- Keep long tests, polling, sampling, and ordinary failure repair inside one
+  Luna work package; use script or native-wait monitoring and review compact
+  summaries, relevant diffs, and targeted artifacts. Document summary-mode
+  process output with private logs, while preserving root risk and final checks.
 - Use `gpt-6-luna` for the default child model and all five native roles.
 - Default to `xhigh` when usable scores for this exact model are unavailable;
   invalidate old-model policy and capability caches. Model capability checks

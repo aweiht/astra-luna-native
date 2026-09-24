@@ -761,19 +761,218 @@ def _record_snapshot(project: Path, run_id: str, entry_id: str, pid: int, expect
     return state
 
 
-def _drain(pipe, buffers: list[bytearray], index: int, guard: threading.Lock, overflow: threading.Event) -> None:
+def _summary_log_directory(project: Path, run_id: str, entry_id: str) -> Path:
+    return _run_dir(project, run_id) / _entry_id(entry_id)
+
+
+def _summary_log_paths(project: Path, run_id: str, entry_id: str) -> dict[str, Path]:
+    directory = _summary_log_directory(project, run_id, entry_id)
+    return {name: directory / (name + ".log") for name in ("stdout", "stderr")}
+
+
+def _same_file_identity(path: Path, info: os.stat_result) -> bool:
+    try:
+        _platform.safe(path)
+        current = path.lstat()
+    except (OSError, ValueError, RuntimeError):
+        return False
+    return (
+        stat.S_ISREG(current.st_mode)
+        and current.st_dev == info.st_dev
+        and current.st_ino == info.st_ino
+        and getattr(current, "st_nlink", 1) == 1
+        and not getattr(current, "st_file_attributes", 0) & 0x400
+    )
+
+
+def _prepare_summary_logs(project: Path, run_id: str, entry_id: str) -> tuple[dict[str, str], list[object]]:
+    """Create new, private, non-following output logs for one registered entry."""
+    directory = _summary_log_directory(project, run_id, entry_id)
+    run_dir = _run_dir(project, run_id)
+    try:
+        _platform.safe(directory)
+        run_info = run_dir.lstat()
+        if not stat.S_ISDIR(run_info.st_mode) or getattr(run_info, "st_file_attributes", 0) & 0x400:
+            raise OSError("managed run directory is not a regular directory")
+        if os.name != "nt" and run_info.st_mode & 0o077:
+            raise OSError("managed run directory is not private")
+        directory.mkdir(mode=0o700)
+        directory_info = directory.lstat()
+        if not stat.S_ISDIR(directory_info.st_mode) or getattr(directory_info, "st_file_attributes", 0) & 0x400:
+            raise OSError("entry log directory is not a regular directory")
+        if os.name != "nt" and directory_info.st_mode & 0o077:
+            raise OSError("entry log directory is not private")
+    except (OSError, ValueError, RuntimeError) as error:
+        raise ProcessRegistryError(_summary_os_error("summary log directory unavailable", error)) from None
+
+    paths = _summary_log_paths(project, run_id, entry_id)
+    handles: list[object] = []
+    created: list[tuple[Path, os.stat_result]] = []
+    try:
+        for name in ("stdout", "stderr"):
+            path = paths[name]
+            _platform.safe(path)
+            flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                     getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0))
+            fd = None
+            try:
+                fd = os.open(path, flags, 0o600)
+                info = os.fstat(fd)
+                created.append((path, info))
+                if not stat.S_ISREG(info.st_mode) or getattr(info, "st_nlink", 1) != 1:
+                    raise OSError("summary log is not a new single-link regular file")
+                if os.name != "nt":
+                    os.fchmod(fd, 0o600)
+                    info = os.fstat(fd)
+                if not _same_file_identity(path, info):
+                    raise OSError("summary log path changed during creation")
+                handle = os.fdopen(fd, "wb", buffering=0)
+                fd = None
+                handles.append(handle)
+            finally:
+                if fd is not None:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+    except (OSError, ValueError, RuntimeError) as error:
+        for handle in handles:
+            try:
+                handle.close()
+            except OSError:
+                pass
+        for path, info in created:
+            if _same_file_identity(path, info):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
+        raise ProcessRegistryError(_summary_os_error("summary log creation failed", error)) from None
+    return ({name: str(path.absolute()) for name, path in paths.items()}, handles)
+
+
+def _close_summary_logs(handles: list[object] | None, paths: dict[str, str]) -> str | None:
+    if handles is None:
+        return None
+    error = None
+    identities = {}
+    for name, handle in zip(("stdout", "stderr"), handles):
+        try:
+            handle.flush()
+            os.fsync(handle.fileno())
+        except (OSError, ValueError) as exc:
+            error = error or _summary_os_error("summary log flush failed", exc)
+        try:
+            identities[name] = os.fstat(handle.fileno())
+        except (OSError, ValueError) as exc:
+            error = error or _summary_os_error("summary log inspection failed", exc)
+        try:
+            handle.close()
+        except (OSError, ValueError) as exc:
+            error = error or _summary_os_error("summary log close failed", exc)
+    for name, raw_path in paths.items():
+        try:
+            path = Path(raw_path)
+            if name not in identities or not _same_file_identity(path, identities[name]):
+                error = error or "summary log integrity check failed"
+        except (OSError, ValueError, RuntimeError):
+            error = error or "summary log integrity check failed"
+    return error
+
+
+def _summary_os_error(prefix: str, error: OSError | ValueError) -> str:
+    detail = getattr(error, "strerror", None) or str(error) or type(error).__name__
+    detail = detail[:256]
+    errno = getattr(error, "errno", None)
+    code = "" if errno is None else " (errno {})".format(errno)
+    return prefix + code + ": " + detail
+
+
+def _write_all(handle, chunk: bytes, on_write=None) -> None:
+    view = memoryview(chunk)
+    while view:
+        written = handle.write(view)
+        if not written:
+            raise OSError("short write")
+        if on_write is not None:
+            on_write(written)
+        view = view[written:]
+
+
+def _process_result(status: str, run_id: str, entry_id: str, owner: str, purpose: str,
+                    pid: int | None, exit_code: int | None, error: str | None, *,
+                    summary: bool, logs: dict[str, str] | None = None,
+                    captured: list[int] | None = None, complete: bool = False,
+                    buffers: list[bytearray] | None = None) -> dict:
+    result = {
+        "status": status,
+        "run_id": run_id,
+        "entry_id": entry_id,
+        "owner": owner,
+        "purpose": purpose,
+        "pid": pid,
+        "exit_code": exit_code,
+    }
+    if error:
+        result["error"] = error
+    if summary:
+        captured = captured or [0, 0]
+        result.update({
+            "logs": dict(logs or {}),
+            "captured_bytes": {"stdout": captured[0], "stderr": captured[1]},
+            "output_complete": bool(complete),
+        })
+    else:
+        buffers = buffers or [bytearray(), bytearray()]
+        result.update({
+            "stdout": bytes(buffers[0]).decode("utf-8", errors="replace"),
+            "stderr": bytes(buffers[1]).decode("utf-8", errors="replace"),
+        })
+    return result
+
+
+def _drain(pipe, buffers: list[bytearray] | None, index: int, guard: threading.Lock,
+           overflow: threading.Event, *, log_handles: list[object] | None = None,
+           log_paths: list[Path] | None = None,
+           captured: list[int] | None = None, stream_error: list[str | None] | None = None,
+           write_failed: threading.Event | None = None) -> None:
     try:
         while True:
             chunk = pipe.read1(16384)
             if not chunk:
                 break
             with guard:
-                if sum(map(len, buffers)) + len(chunk) > MAX_OUTPUT_BYTES:
+                total = sum(captured) if captured is not None else sum(map(len, buffers or ()))
+                if total + len(chunk) > MAX_OUTPUT_BYTES:
                     overflow.set()
                     break
-                buffers[index].extend(chunk)
-    except (OSError, ValueError):
-        pass
+                if log_handles is None:
+                    buffers[index].extend(chunk)
+                else:
+                    try:
+                        if not _same_file_identity(log_paths[index], os.fstat(log_handles[index].fileno())):
+                            raise OSError("summary log path changed or gained a hard link")
+                        _write_all(log_handles[index], chunk,
+                                   on_write=lambda amount: captured.__setitem__(
+                                       index, captured[index] + amount))
+                    except OSError as exc:
+                        if stream_error is not None:
+                            stream_error[index] = _summary_os_error("summary log write failed", exc)
+                        if write_failed is not None:
+                            write_failed.set()
+                        break
+                if captured is not None and log_handles is None:
+                    captured[index] += len(chunk)
+    except (OSError, ValueError) as exc:
+        if log_handles is not None:
+            if stream_error is not None:
+                stream_error[index] = _summary_os_error("summary output stream read failed", exc)
+            if write_failed is not None:
+                write_failed.set()
     finally:
         try:
             pipe.close()
@@ -789,13 +988,17 @@ def _stop(proc) -> str | None:
     return None
 
 
-def run_process(project: str | Path, run_id: str, owner: str, purpose: str, argv: list[str] | tuple[str, ...], *, timeout: float = 600, on_start=None) -> dict:
+def run_process(project: str | Path, run_id: str, owner: str, purpose: str,
+                argv: list[str] | tuple[str, ...], *, timeout: float = 600,
+                on_start=None, summary: bool = False) -> dict:
     project_path = _project(project)
     run_id = _run_id(run_id)
     owner = _text(owner, "owner")
     purpose = _text(purpose, "purpose")
     args = _validate_argv(argv)
     timeout = _validate_timeout(timeout)
+    if not isinstance(summary, bool):
+        raise ProcessRegistryError("summary must be a boolean")
     if on_start is not None and not callable(on_start):
         raise ProcessRegistryError("on_start must be callable")
     wrapper_pid = os.getpid()
@@ -805,6 +1008,8 @@ def run_process(project: str | Path, run_id: str, owner: str, purpose: str, argv
     wrapper = {"pid": wrapper_pid, "identity": wrapper_identity}
     entry_id = None
     proc = None
+    log_paths: dict[str, str] = {}
+    log_handles: list[object] | None = None
     started_at = _stamp()
     callback_error = None
     with _run_lock(project_path, run_id):
@@ -836,7 +1041,23 @@ def run_process(project: str | Path, run_id: str, owner: str, purpose: str, argv
             entry.update(update)
             _validate_entry(entry, project_path, run_id, entry_id)
             _write_json(_entry_path(project_path, run_id, entry_id), entry)
-            return {**callback, "status": "FAILED", "error": "on_start callback failed"}
+            if not summary:
+                return {**callback, "status": "FAILED", "error": "on_start callback failed"}
+            return _process_result("FAILED", run_id, entry_id, owner, purpose, wrapper_pid,
+                                   None, "on_start callback failed", summary=summary,
+                                   complete=False)
+        if summary:
+            try:
+                log_paths, log_handles = _prepare_summary_logs(project_path, run_id, entry_id)
+            except ProcessRegistryError as log_exception:
+                error = str(log_exception)
+                entry = _read_json(_entry_path(project_path, run_id, entry_id), "entry ledger")
+                entry.update({"status": "FAILED", "finished_at": _stamp(), "error": error,
+                              "cleanup_status": "CONFIRMED"})
+                _validate_entry(entry, project_path, run_id, entry_id)
+                _write_json(_entry_path(project_path, run_id, entry_id), entry)
+                return _process_result("FAILED", run_id, entry_id, owner, purpose, wrapper_pid,
+                                       None, error, summary=True, complete=False)
         try:
             proc = _platform.spawn(args, cwd=str(project_path))
             process_state, process_identity = _now_identity(int(proc.pid))
@@ -848,26 +1069,59 @@ def run_process(project: str | Path, run_id: str, owner: str, purpose: str, argv
                 entry.update(update)
                 _validate_entry(entry, project_path, run_id, entry_id)
                 _write_json(_entry_path(project_path, run_id, entry_id), entry)
-                return {**callback, "status": "UNVERIFIED", "error": update["error"]}
+                log_error = _close_summary_logs(log_handles, log_paths) if summary else None
+                log_handles = None
+                if log_error:
+                    update["error"] = update["error"] + "; " + log_error
+                    _update_entry(project_path, run_id, entry_id,
+                                  {"error": update["error"]}, allow_closing=True)
+                if not summary:
+                    return {**callback, "status": "UNVERIFIED", "error": update["error"]}
+                return _process_result("UNVERIFIED", run_id, entry_id, owner, purpose,
+                                       int(proc.pid), None, update["error"], summary=summary,
+                                       logs=log_paths, complete=False)
             process = None if already_exited else {"pid": int(proc.pid), "identity": process_identity}
             entry = _read_json(_entry_path(project_path, run_id, entry_id), "entry ledger")
             entry.update({"process": process, "status": "RUNNING"})
             _validate_entry(entry, project_path, run_id, entry_id)
             _write_json(_entry_path(project_path, run_id, entry_id), entry)
         except Exception:
-            if proc is not None:
-                _stop(proc)
+            cleanup_error = _stop(proc) if proc is not None else None
+            log_error = _close_summary_logs(log_handles, log_paths) if summary else None
+            log_handles = None
+            error = "process could not start"
+            if cleanup_error:
+                error += "; " + cleanup_error
+            if log_error:
+                error += "; " + log_error
             entry = _read_json(_entry_path(project_path, run_id, entry_id), "entry ledger")
-            entry.update({"status": "FAILED", "finished_at": _stamp(), "error": "process could not start"})
+            status = "UNVERIFIED" if cleanup_error else "FAILED"
+            entry.update({"status": status, "finished_at": _stamp(), "error": error,
+                          "cleanup_status": "UNVERIFIED" if cleanup_error else "CONFIRMED"})
             _validate_entry(entry, project_path, run_id, entry_id)
             _write_json(_entry_path(project_path, run_id, entry_id), entry)
-            return {**callback, "status": "FAILED", "error": "process could not start"}
+            if not summary:
+                return {**callback, "status": status, "error": error}
+            return _process_result(status, run_id, entry_id, owner, purpose,
+                                   int(proc.pid) if proc is not None else wrapper_pid, None,
+                                   error, summary=summary, logs=log_paths,
+                                   complete=False)
 
-    buffers = [bytearray(), bytearray()]
+    buffers = None if summary else [bytearray(), bytearray()]
+    captured = [0, 0]
+    stream_errors: list[str | None] = [None, None]
     guard = threading.Lock()
     overflow = threading.Event()
-    threads = [threading.Thread(target=_drain, args=(proc.stdout, buffers, 0, guard, overflow), daemon=True),
-               threading.Thread(target=_drain, args=(proc.stderr, buffers, 1, guard, overflow), daemon=True)]
+    write_failed = threading.Event()
+    log_path_list = [Path(log_paths[name]) for name in ("stdout", "stderr")] if summary else None
+    threads = [
+        threading.Thread(target=_drain,
+                         args=(pipe, buffers, index, guard, overflow),
+                         kwargs={"log_handles": log_handles, "log_paths": log_path_list,
+                                 "captured": captured, "stream_error": stream_errors,
+                                 "write_failed": write_failed}, daemon=True)
+        for index, pipe in enumerate((proc.stdout, proc.stderr))
+    ]
     for thread in threads:
         thread.start()
     try:
@@ -885,7 +1139,7 @@ def run_process(project: str | Path, run_id: str, owner: str, purpose: str, argv
             code = proc.poll()
             if code is not None:
                 break
-            if overflow.is_set():
+            if overflow.is_set() or write_failed.is_set():
                 break
             if time.monotonic() >= deadline:
                 timed_out = True
@@ -897,6 +1151,8 @@ def run_process(project: str | Path, run_id: str, owner: str, purpose: str, argv
         drain_error = "command streams did not stop after cleanup" if any(
             thread.is_alive() for thread in threads
         ) else None
+        log_error = _close_summary_logs(log_handles, log_paths) if summary else None
+        log_handles = None
         code = proc.returncode if proc.returncode is not None else proc.poll()
         if cleanup_error:
             status = "UNVERIFIED"
@@ -910,34 +1166,39 @@ def run_process(project: str | Path, run_id: str, owner: str, purpose: str, argv
         elif overflow.is_set():
             status = "FAILED"
             error = "process output exceeded bound"
+        elif write_failed.is_set():
+            status = "FAILED"
+            error = next((item for item in stream_errors if item), "summary log write failed")
+        elif log_error:
+            status = "FAILED"
+            error = log_error
         elif code == 0:
             status = "SUCCESS"
             error = None
         else:
             status = "FAILED"
             error = "process exited with non-zero status"
+        extra_log_error = next((item for item in stream_errors if item), None) or log_error
+        if extra_log_error and error and extra_log_error not in error:
+            error += "; " + extra_log_error
         update = {"status": status, "finished_at": _stamp(), "exit_code": code, "error": error,
                   "cleanup_status": "UNVERIFIED" if cleanup_error or drain_error else "CONFIRMED"}
         updated, _run, _entry = _update_entry(project_path, run_id, entry_id, update, allow_closing=True)
         if not updated:
             status = "UNVERIFIED"
             error = "run closed while command was executing"
-        result = {
-            "status": status,
-            "run_id": run_id,
-            "entry_id": entry_id,
-            "owner": owner,
-            "purpose": purpose,
-            "pid": int(proc.pid),
-            "exit_code": code,
-            "stdout": bytes(buffers[0]).decode("utf-8", errors="replace"),
-            "stderr": bytes(buffers[1]).decode("utf-8", errors="replace"),
-        }
-        if error:
-            result["error"] = error
-        return result
+        return _process_result(
+            status, run_id, entry_id, owner, purpose, int(proc.pid), code, error,
+            summary=summary, logs=log_paths, captured=captured,
+            complete=(not overflow.is_set() and not write_failed.is_set() and
+                      not cleanup_error and not drain_error and not log_error),
+            buffers=buffers,
+        )
     except BaseException:
         cleanup_error = _stop(proc)
+        log_error = _close_summary_logs(log_handles, log_paths) if summary else None
+        log_handles = None
+        error = cleanup_error or log_error or "process execution failed"
         _update_entry(project_path, run_id, entry_id, {"status": "UNVERIFIED", "finished_at": _stamp(), "error": cleanup_error or "process execution failed"}, allow_closing=True)
         raise
 

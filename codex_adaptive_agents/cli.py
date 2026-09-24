@@ -82,6 +82,7 @@ def parser():
     value.add_argument('--owner', help='work package or child Agent identifier')
     value.add_argument('--purpose', help='short process purpose; do not include secrets')
     value.add_argument('--timeout', type=float, help='process-run timeout in seconds (default 600)')
+    value.add_argument('--summary', action='store_true', help='store bounded process output in private logs')
     value.add_argument('--retain', help='comma-separated entry IDs explicitly kept running')
     return value
 
@@ -130,11 +131,13 @@ def main(argv=None):
             from . import process_registry
             if not args.project:
                 raise ValueError('--project is required for process commands')
+            if args.summary and command != 'process-run':
+                raise ValueError('--summary is only valid for process-run')
             if args.live or args.yes or args.dry_run or args.plan_id or args.backup or args.output or args.explain:
                 raise ValueError('unsupported option for process command')
             project = Path(os.path.abspath(os.path.expanduser(args.project)))
             if command == 'process-init':
-                if args.run_id or args.owner or args.purpose or args.timeout is not None or args.retain:
+                if args.run_id or args.owner or args.purpose or args.timeout is not None or args.retain or args.summary:
                     raise ValueError('process-init only accepts --project')
                 result = process_registry.init_run(project)
             else:
@@ -149,7 +152,8 @@ def main(argv=None):
                     def started(event):
                         print(encode(event).decode('utf-8'), end='', file=sys.stderr, flush=True)
                     result = process_registry.run_process(project, args.run_id, args.owner,
-                        args.purpose, child_argv, timeout=timeout, on_start=started)
+                        args.purpose, child_argv, timeout=timeout, on_start=started,
+                        summary=args.summary)
                 else:
                     if args.owner or args.purpose or args.timeout is not None:
                         raise ValueError('--owner, --purpose and --timeout are only valid for process-run')
@@ -160,7 +164,7 @@ def main(argv=None):
                     result = action(project, args.run_id, retain=retain)
             show(result)
             return 0 if result.get('status') in ('STARTED', 'READY', 'SUCCESS', 'CLEAN', 'RETAINED') else 1
-        if args.run_id or args.owner or args.purpose or args.timeout is not None or args.retain:
+        if args.run_id or args.owner or args.purpose or args.timeout is not None or args.retain or args.summary:
             raise ValueError('process options require a process command')
         if command == 'internal-smoke-check':
             from . import verify

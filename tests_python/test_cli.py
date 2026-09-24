@@ -25,6 +25,9 @@ class CLITests(unittest.TestCase):
             (['recover', '--yes', '--dry-run'], '--dry-run'),
             (['rollback', '--backup', 'recorded', '--yes', '--dry-run'], '--dry-run'),
             (['process-init', '--project', '.', '--dry-run'], '--dry-run'),
+            (['process-init', '--project', '.', '--summary'], '--summary'),
+            (['process-check', '--project', '.', '--run-id', 'a' * 32, '--summary'], '--summary'),
+            (['doctor', '--summary'], 'process options'),
             (['internal-smoke-check', '--project', '.', '--dry-run'], '--dry-run'),
             (['recover', '--backup', 'recorded', '--yes'], '--backup'),
             (['install', '--backup', 'recorded', '--yes'], '--backup'),
@@ -35,7 +38,8 @@ class CLITests(unittest.TestCase):
                       (install, 'recover'), (cli, 'resolve_codex'), (cli, 'doctor'),
                       (policy, 'select'), (policy, 'refresh_capabilities'),
                       (verify, 'run'), (verify, 'check'),
-                      (process_registry, 'init_run'), (tempfile, 'mkdtemp')]
+                      (process_registry, 'init_run'), (process_registry, 'check_run'),
+                      (process_registry, 'cleanup_run'), (tempfile, 'mkdtemp')]
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory) / 'must not be created'
             for arguments, expected in cases:
@@ -143,6 +147,18 @@ runpy.run_path(entry,run_name='__main__')
                              'import sys; assert sys.argv[1:] == ["--yes", "--yes"]; print("handoff-ok")',
                              '--yes', '--yes')
             self.assertEqual(command['status'], 'SUCCESS')
+            summary_command = invoke(entry, 'process-run', '--project', str(project),
+                                    '--run-id', run_id, '--owner', 'cli-summary-test',
+                                    '--purpose', 'installed compact output', '--summary', '--',
+                                    sys.executable, '-c',
+                                    'import sys; sys.stdout.write("verbose-" * 4000)')
+            self.assertEqual(summary_command['status'], 'SUCCESS')
+            self.assertNotIn('stdout', summary_command)
+            self.assertNotIn('stderr', summary_command)
+            self.assertLess(len(json.dumps(summary_command).encode('utf-8')), 4096)
+            self.assertTrue(summary_command['output_complete'])
+            self.assertEqual(summary_command['captured_bytes']['stdout'], len('verbose-') * 4000)
+            self.assertEqual(Path(summary_command['logs']['stdout']).read_text(), 'verbose-' * 4000)
             checked = invoke(entry, 'process-check', '--project', str(project), '--run-id', run_id)
             self.assertEqual(checked['status'], 'CLEAN')
             self.assertEqual(invoke(entry, 'process-cleanup', '--project', str(project),

@@ -12,12 +12,14 @@
 
 需要新增 Agent 时，只向主 Agent 报告目标、收益和依赖，由主 Agent 决定是否启动；不要自行创建 Agent、运行选档脚本或向下委派。
 
-需要临时后台服务或较长命令时，等待主 Agent 传入当前工作包的 `project`、`run_id`、运行入口、owner、用途和资源/端口边界，再使用前台包装器：
+长测试、轮询、采样及常规失败处理都留在当前工作包，由你作为执行 owner 闭环。需要临时服务或较长命令时，等待主 Agent 传入当前工作包的 `project`、`run_id`、运行入口、owner、用途和资源/端口边界，再使用前台包装器：
 
 ```text
-<ENTRY> process-run --project <PROJECT> --run-id <RUN_ID> --owner <OWNER> --purpose "<PURPOSE>" -- <command> <arg>
+<ENTRY> process-run --project <PROJECT> --run-id <RUN_ID> --owner <OWNER> --purpose "<PURPOSE>" --summary --timeout <seconds> -- <command> <arg>
 ```
 
-`process-run` 默认超时 600 秒，命令结束或超时会回收自己的进程；脚本本身不建立新的常驻服务。包装器在启动前登记真实进程身份和用途，并立即向 stderr 刷新启动事件；命令完成时 stdout 输出一个 JSON 对象。启动事件或 `process-check` 可提供 `entry_id` 和 PID；拿到后尽快向主 Agent 报告它们、用途和验证状态，不要等工作包结束或最终 JSON 才登记。需要查看运行状态时报告主 Agent，在另一个窗口读取 `process-check` 快照；不要按 PID 任意杀进程。普通短命令没有后台进程时，不需要 `process-init`。
+`process-run` 默认超时 600 秒，命令结束或超时会回收自己的进程；脚本本身不建立新的常驻服务。超时按任务授权设置且不超过 86400 秒。`--summary` 完成摘要包含状态、退出结果、登记标识与 PID、捕获字节数和私有日志位置，不回传 stdout/stderr 正文；不加 `--summary` 时仍兼容原有的全文完成 JSON。捕获的 stdout 与 stderr 合计上限为 2 MiB，超过上限会失败且日志可能不完整；若 `output_complete=false`，只能按部分证据处理，不得称为完整日志。日志在私有 run 目录，读取时只取诊断所需片段。
 
-完成工作包前主动停止自己的执行会话和命令，并报告实际进程、验证结果以及明确保留的用途。主 Agent 等所有参与者停止写入后负责本轮独立 `process-check` 和 `process-cleanup`，清理后再执行一次 `process-check` 确认状态；叶子不要清理共享批次。经任务明确授权而保留的服务要报告为 `RETAINED`，不能把它写成 `CLEAN`。保留项可以在同一个 run 中日后再次检查和清理，但不能借此新增命令。登记记录说明本次工作包，不保证发现机器上所有未登记进程，也不是宿主强制执行机制。
+包装器启动前登记真实进程身份和用途，并立即向 stderr 刷新启动事件。执行 owner 启动时报告一次 `entry_id`、PID 和用途，完成时交付验证结果；遇到异常、阈值或待决事项再报告。持续监测交给命令自身或宿主原生等待；无变化时不重复轮询 `process-check`，但明确异常、身份疑点或监督失联时可定点检查。原生等待超时只是等待区间结束。若上级要求中途简述状态，按已知情况说明，不为更新重读无变化日志或快照。普通短命令不需要 `process-init`。
+
+完成交付后停止写入，不得自行续做；若验收后需要修复，等主 Agent 重新交接再开始，避免和主控验收竞态。主 Agent 等所有参与者停止写入后负责本轮独立 `process-check` 和 `process-cleanup`，清理后再执行一次 `process-check` 确认状态；叶子不要清理共享批次。经任务明确授权而保留的服务要报告为 `RETAINED`，不能把它写成 `CLEAN`。保留项可以在同一个 run 中日后再次检查和清理，但不能借此新增命令。登记记录说明本次工作包，不保证发现机器上所有未登记进程，也不是宿主强制执行机制。

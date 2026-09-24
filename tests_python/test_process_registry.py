@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 from pathlib import Path
 import signal
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -106,11 +108,14 @@ class ProcessRegistryTests(unittest.TestCase):
         self._run_ids.append(run_id)
         return run_id
 
-    def _run_command(self, run_id, command, *, timeout=10, expected=0):
+    def _run_command(self, run_id, command, *, timeout=10, expected=0, summary=False):
+        options = ["--run-id", run_id, "--owner", "process-registry-tests",
+                  "--purpose", "isolated process handoff regression", "--timeout", timeout]
+        if summary:
+            options.append("--summary")
         return self._invoke(
-            "process-run", "--run-id", run_id, "--owner", "process-registry-tests",
-            "--purpose", "isolated process handoff regression", "--timeout", timeout,
-            "--", *command, expected=expected, timeout=max(30, timeout + 15),
+            "process-run", *options, "--", *command, expected=expected,
+            timeout=max(30, timeout + 15),
         )
 
     @staticmethod
@@ -204,6 +209,167 @@ class ProcessRegistryTests(unittest.TestCase):
                 self.assertEqual(checked["status"], "CLEAN")
                 cleaned = self._invoke("process-cleanup", "--run-id", run_id)
                 self.assertEqual(cleaned["status"], "CLEAN")
+
+    def test_summary_keeps_verbose_output_in_private_bounded_logs(self):
+        run_id = self._init_run()
+        command = [PYTHON, "-I", "-B", "-c",
+                   "import sys; sys.stdout.buffer.write(b'O'*50000); sys.stderr.buffer.write(b'E'*30000)"]
+        result = self._run_command(run_id, command, summary=True)
+        self.assertEqual(result["status"], "SUCCESS")
+        self.assertNotIn("stdout", result)
+        self.assertNotIn("stderr", result)
+        self.assertLess(len(json.dumps(result).encode("utf-8")), 4096)
+        self.assertTrue(result["output_complete"])
+        self.assertEqual(result["captured_bytes"], {"stdout": 50000, "stderr": 30000})
+        run_dir = self.project / ".codex-adaptive-agents" / "processes" / run_id
+        for name, expected in (("stdout", b"O" * 50000), ("stderr", b"E" * 30000)):
+            path = Path(result["logs"][name])
+            self.assertTrue(path.is_absolute())
+            self.assertEqual(path.read_bytes(), expected)
+            self.assertTrue(path.parent.parent.samefile(run_dir))
+            if os.name != "nt":
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self._invoke("process-check", "--run-id", run_id)["status"], "CLEAN")
+
+    def test_summary_reports_nonzero_timeout_overflow_and_log_write_failure(self):
+        run_id = self._init_run()
+        failed = self._run_command(
+            run_id, [PYTHON, "-I", "-B", "-c",
+                     "import sys; sys.stderr.write('failure-evidence'); raise SystemExit(7)"],
+            summary=True, expected=1,
+        )
+        self.assertEqual(failed["status"], "FAILED")
+        self.assertEqual(failed["exit_code"], 7)
+        self.assertTrue(failed["output_complete"])
+        self.assertEqual(Path(failed["logs"]["stderr"]).read_text(), "failure-evidence")
+
+        timed = self._run_command(
+            run_id, [PYTHON, "-I", "-B", "-c",
+                     "import sys,time; print('before-timeout',flush=True); time.sleep(5)"],
+            timeout=0.25, summary=True, expected=1,
+        )
+        self.assertEqual(timed["status"], "TIMEOUT")
+        self.assertIn(b"before-timeout", Path(timed["logs"]["stdout"]).read_bytes())
+
+        overflow = self._run_command(
+            run_id, [PYTHON, "-I", "-B", "-c",
+                     f"import sys; sys.stdout.buffer.write(b'X'*{process_registry.MAX_OUTPUT_BYTES + 16384})"],
+            summary=True, expected=1,
+        )
+        self.assertEqual(overflow["status"], "FAILED")
+        self.assertIn("exceeded bound", overflow["error"])
+        self.assertFalse(overflow["output_complete"])
+        stdout_path = Path(overflow["logs"]["stdout"])
+        self.assertLessEqual(stdout_path.stat().st_size, process_registry.MAX_OUTPUT_BYTES)
+        self.assertEqual(stdout_path.stat().st_size, overflow["captured_bytes"]["stdout"])
+        self.assertEqual(self._invoke("process-check", "--run-id", run_id)["status"], "CLEAN")
+
+        write_run = self._init_run()
+        bootstrap = '''
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from unittest.mock import patch
+from codex_adaptive_agents import process_registry as registry
+project, run_id, python = sys.argv[2:5]
+def partial_write(handle, chunk, on_write=None):
+    amount = min(3, len(chunk))
+    written = handle.write(memoryview(chunk)[:amount])
+    if on_write is not None:
+        on_write(written)
+    raise OSError(28, "No space left on device")
+with patch.object(registry, "_write_all", side_effect=partial_write):
+    result = registry.run_process(project, run_id, "process-registry-tests",
+        "summary write failure", [python, "-I", "-B", "-c", "print('write-me')"],
+        summary=True)
+print(json.dumps(result))
+'''
+        failure_runner = subprocess.run(
+            [PYTHON, "-I", "-B", "-c", bootstrap, str(ENTRY.parent),
+             str(self.project), write_run, PYTHON],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30,
+        )
+        self.assertEqual(failure_runner.returncode, 0, failure_runner.stderr.decode(errors="replace"))
+        write_error = json.loads(failure_runner.stdout)
+        self.assertEqual(write_error["status"], "FAILED")
+        self.assertIn("summary log write failed", write_error["error"])
+        self.assertIn("No space left on device", write_error["error"])
+        self.assertFalse(write_error["output_complete"])
+        self.assertEqual(write_error["captured_bytes"]["stdout"], 3)
+        self.assertEqual(Path(write_error["logs"]["stdout"]).read_bytes(), b"wri")
+
+    def test_summary_log_paths_reject_symlink_and_hardlink_tampering(self):
+        run_id = self._init_run()
+        run_dir = self.project / ".codex-adaptive-agents" / "processes" / run_id
+        outside = self.project / "outside"
+        outside.mkdir()
+        sentinel = outside / "sentinel"
+        sentinel.write_bytes(b"preserve")
+        symlink_entry = "a" * 32
+        try:
+            os.symlink(outside, run_dir / symlink_entry, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("directory symlinks are unavailable")
+        with self.assertRaises(process_registry.ProcessRegistryError):
+            process_registry._prepare_summary_logs(self.project, run_id, symlink_entry)
+        self.assertEqual(sentinel.read_bytes(), b"preserve")
+
+        hardlink_entry = "b" * 32
+        paths, handles = process_registry._prepare_summary_logs(self.project, run_id, hardlink_entry)
+        external_link = self.project / "outside-linked-log"
+        os.link(paths["stdout"], external_link)
+        captured = [0, 0]
+        stream_errors = [None, None]
+        write_failed = threading.Event()
+        process_registry._drain(
+            io.BytesIO(b"must not write through linked log"), None, 0,
+            threading.Lock(), threading.Event(),
+            log_handles=handles,
+            log_paths=[Path(paths[name]) for name in ("stdout", "stderr")],
+            captured=captured, stream_error=stream_errors, write_failed=write_failed,
+        )
+        self.assertTrue(write_failed.is_set())
+        self.assertIn("hard link", stream_errors[0])
+        self.assertEqual(captured[0], 0)
+        self.assertEqual(external_link.read_bytes(), b"")
+        self.assertIn("integrity", process_registry._close_summary_logs(handles, paths))
+
+    def test_full_prelaunch_failures_keep_legacy_return_shape(self):
+        run_ids = [self._init_run() for _ in range(3)]
+        bootstrap = '''
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+from unittest.mock import patch
+from codex_adaptive_agents import process_registry as registry
+project, callback_run, spawn_run, identity_run, python = sys.argv[2:7]
+def command(): return [python, "-I", "-B", "-c", "import time; time.sleep(5)"]
+def fail_callback(_): raise RuntimeError("callback probe")
+results = [registry.run_process(project, callback_run, "compat", "callback failure",
+    command(), on_start=fail_callback)]
+with patch.object(registry._platform, "spawn", side_effect=RuntimeError("spawn probe")):
+    results.append(registry.run_process(project, spawn_run, "compat", "spawn failure", command()))
+real_identity = registry._now_identity
+def unavailable_child(pid):
+    return real_identity(pid) if pid == os.getpid() else ("unknown", None)
+with patch.object(registry, "_now_identity", side_effect=unavailable_child):
+    results.append(registry.run_process(project, identity_run, "compat", "identity failure", command()))
+print(json.dumps(results))
+'''
+        compatibility = subprocess.run(
+            [PYTHON, "-I", "-B", "-c", bootstrap, str(ENTRY.parent),
+             str(self.project), *run_ids, PYTHON],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30,
+        )
+        self.assertEqual(compatibility.returncode, 0, compatibility.stderr.decode(errors="replace"))
+        results = json.loads(compatibility.stdout)
+        expected_keys = {"status", "run_id", "entry_id", "owner", "purpose", "pid",
+                         "identity", "started_at", "error"}
+        for result in results:
+            self.assertEqual(set(result), expected_keys)
+            self.assertIn("identity", result)
+            self.assertIn("started_at", result)
+        self.assertEqual([result["status"] for result in results], ["FAILED", "FAILED", "UNVERIFIED"])
+        self.assertEqual(results[1]["error"], "process could not start")
+        self.assertIn("identity unavailable", results[2]["error"])
 
     def test_same_run_concurrent_entries_keep_manifest_complete(self):
         run_id = self._init_run()
